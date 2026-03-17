@@ -3,10 +3,13 @@
 
 #include <stdint.h>
 
-#define OPCODES_NUM 64 // Way less but we keep some space for the future.
+#define OPCODES_NUM 512 // Way less but we avoid collisions.
 
 unsigned long sdbm(char *keyword);
 
-// uint8_t opcodes[OPCODES_NUM];
+typedef struct hashMap_s{
+    const uint8_t opcodes[OPCODES_NUM];
+
+} hashMap;
 
 #endif

@@ -1,4 +1,4 @@
 sources += files(
-    'hash.c',
+    'opcodes.c',
     'main.c',
 )
