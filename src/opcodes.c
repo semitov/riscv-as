@@ -2,14 +2,14 @@
 
 static uint8_t format_binary(char *s, size_t bits) {
 	uint8_t binValue = 0;
-	for (int i = 0; i < bits; i++)
+	for (int i = 0; i < bits; i++) {
 		binValue = (binValue << 1) | (s[i] - '0');
+	}
 
 	return binValue;
 }
 
 int build_instructions(const char *filename, instruction_t *instructions, size_t num) {
-
 	FILE *opcodeFile = fopen(filename, "r");
 
 	if (opcodeFile == NULL) {
