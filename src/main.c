@@ -8,14 +8,14 @@
 
 int main(int argc, char **argv) {
 	arguments_s *arguments = {0};
-	//hashmap_s *hashmap = {0};
+	// hashmap_s *hashmap = {0};
 
 	arguments = argparse(argc, argv);
 	if (!arguments) {
 		goto cleanup;
 	}
 
-	//hashmap = hm_init();
+	// hashmap = hm_init();
 	/*if (!hashmap) {
 		goto cleanup;
 	}*/
@@ -24,9 +24,9 @@ int main(int argc, char **argv) {
 	fprintf(stdout, "[info] compiling %s ...\n", arguments->file);
 
 	/* Load definitions into instructions hashmap */
-	//load_instructions(arguments->definitions_schema, hashmap);
+	// load_instructions(arguments->definitions_schema, hashmap);
 
-    assemble_file(arguments->file);
+	assemble_file(arguments->file);
 	/* Retrieve some instructions */
 	/*instruction_s *add = hm_get(hashmap, "add");
 	if (!add) {
@@ -41,6 +41,6 @@ int main(int argc, char **argv) {
 
 cleanup:
 	argparse_free(arguments);
-	//hm_free(hashmap);
+	// hm_free(hashmap);
 	return EXIT_FAILURE;
 }

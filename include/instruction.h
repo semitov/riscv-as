@@ -11,7 +11,7 @@
  *
  * @note Must be called before using the assembler.
  */
-//int load_instructions(const char *filename, hashmap_s *hashmap);
+// int load_instructions(const char *filename, hashmap_s *hashmap);
 int assemble_file(const char *filename);
 
 #endif

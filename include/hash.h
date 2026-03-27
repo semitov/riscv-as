@@ -11,8 +11,7 @@ typedef struct hashmap {
 	instruction_s value;
 } hashmap_s;
 
-const struct instruction *
-in_word_set (register const char *str, register size_t len);
+const struct instruction *in_word_set(register const char *str, register size_t len);
 
 /**
  * @brief Initializes a new hashmap.
@@ -22,8 +21,7 @@ in_word_set (register const char *str, register size_t len);
  * @note Remember to free.
  */
 
-
-//hashmap_s *hm_init();
+// hashmap_s *hm_init();
 
 /**
  * @brief Inserts or updates an element in the hashmap.
@@ -34,7 +32,7 @@ in_word_set (register const char *str, register size_t len);
  *
  * @return 0 on success, -1 on failure.
  */
-//int hm_set(hashmap_s *hashmap, char *key, instruction_s value);
+// int hm_set(hashmap_s *hashmap, char *key, instruction_s value);
 
 /**
  * @brief Retrieves an element from the hashmap.
@@ -44,13 +42,13 @@ in_word_set (register const char *str, register size_t len);
  *
  * @return The pointer to the instruction if found, otherwise NULL.
  */
-//instruction_s *hm_get(hashmap_s *hashmap, char *key);
+// instruction_s *hm_get(hashmap_s *hashmap, char *key);
 
 /**
  * @brief Clears the memory freeing the hashmap.
  *
  * @param hashmap The hashmap.
  */
-//void hm_free(hashmap_s *hashmap);
+// void hm_free(hashmap_s *hashmap);
 
 #endif

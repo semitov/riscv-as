@@ -33,7 +33,7 @@ hashmap_s *hm_init() {
 	unsigned int index = hash(key, strlen(key));
 	snprintf(hashmap[index].key, sizeof hashmap[index].key, "%s", key);
 	hashmap[index].value = value;
-    printf("[DEBUG/hm_set] Key: %s Type: %c\n",key, value.type);
+	printf("[DEBUG/hm_set] Key: %s Type: %c\n",key, value.type);
 	return EXIT_SUCCESS;
 }*/
 
@@ -46,7 +46,7 @@ hashmap_s *hm_init() {
 	if (!strcmp(hashmap[index].key, "")) {
 		return NULL;
 	}
-    printf("[DEBUG/hm_get] Key: %s Type: %c\n",key, hashmap[index].value.type);
+	printf("[DEBUG/hm_get] Key: %s Type: %c\n",key, hashmap[index].value.type);
 	return &hashmap[index].value;
 }*/
 
