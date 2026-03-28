@@ -3,10 +3,12 @@
 #include "hash.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static uint8_t get_register(char *reg) {
 	uint8_t regValue = 0x0;
+
 	switch (reg[0]) {
 		case 'x':
 			sscanf(&reg[1], "%hhu", &regValue);
@@ -48,12 +50,17 @@ static uint8_t get_register(char *reg) {
 		default:
 			break;
 	}
+
 	return regValue;
 }
 
 int assemble_file(const char *filename) {
-	char name[NAME_LEN];
 	FILE *fp = fopen(filename, "r");
+	if (!fp) {
+		return EXIT_FAILURE;
+	}
+
+	char name[NAME_LEN];
 	char rd[REGISTER_LEN], rs1[REGISTER_LEN], rs2[REGISTER_LEN];
 	uint16_t imm, imm2;
 	uint32_t imm32;
@@ -100,5 +107,5 @@ int assemble_file(const char *filename) {
 
 	fclose(fp);
 
-	return 0;
+	return EXIT_SUCCESS;
 }
