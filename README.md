@@ -11,6 +11,6 @@ $ ninja gperf
 $ meson compile
 ```
 
-### Contributing
+## Contributing
 
 Remember to format the code before making any contribute. Just run `ninja format` inside the `build/` folder.
