@@ -3,6 +3,16 @@
 
 #include <stdint.h>
 
+#define REGISTER_LEN 4
+#define NAME_LEN 64
+
+#define R_TYPE 'R'
+#define I_TYPE 'I'
+#define S_TYPE 'S'
+#define B_TYPE 'B'
+#define U_TYPE 'U'
+#define J_TYPE 'J'
+
 typedef struct instruction {
 	char *name;
 	uint8_t opcode;

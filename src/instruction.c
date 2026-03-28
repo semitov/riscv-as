@@ -52,45 +52,45 @@ static uint8_t get_register(char *reg) {
 }
 
 int assemble_file(const char *filename) {
-	char name[64];
+	char name[NAME_LEN];
 	FILE *fp = fopen(filename, "r");
-	char rd[4], rs1[4], rs2[4];
+	char rd[REGISTER_LEN], rs1[REGISTER_LEN], rs2[REGISTER_LEN];
 	uint16_t imm, imm2;
 	uint32_t imm32;
 	const instruction_s *instr;
 
-	while ((fscanf(fp, "%s ", name) != EOF)) {
+	while ((fscanf(fp, " %s ", name) != EOF)) {
 		instr = find_instruction(name, strlen(name));
 		if (instr == NULL) {
-			printf("[error] unknown instruction %s\n", name);
+			fprintf(stderr, "[error] unknown instruction:\n%s\n", name);
 			break;
 		}
 
-		fprintf(stdout, "[info] fetching instruction: %s with type: %c\n", name, instr->type);
+		fprintf(stdout, "[info] fetching instruction: %s (%c TYPE)\n", name, instr->type);
 
 		switch (instr->type) {
-			case 'R':
-				fscanf(fp, "%3[^,], %3[^,], %3[^,]", rd, rs1, rs2);
+			case R_TYPE:
+				fscanf(fp, " %3[^,], %3[^,], %3[^,\n] ", rd, rs1, rs2);
 				printf("R-Type Read: %s %s %s\n", rd, rs1, rs2);
 				break;
-			case 'I':
-				fscanf(fp, "%3[^,], %3[^,], %hu", rd, rs1, &imm);
+			case I_TYPE:
+				fscanf(fp, " %3[^,], %3[^,], %hu[^\n] ", rd, rs1, &imm);
 				printf("I-Type Read: %s, %s, %hu\n", rd, rs1, imm);
 				break;
-			case 'S':
-				fscanf(fp, "%hu, %3[^,], %3[^,], %hu", &imm, rs1, rs2, &imm2);
+			case S_TYPE:
+				fscanf(fp, " %hu, %3[^,], %3[^,], %hu[^\n] ", &imm, rs1, rs2, &imm2);
 				printf("S-Type Read: %hu, %s, %s, %hu\n", imm, rd, rs1, imm2);
 				break;
-			case 'B':
-				fscanf(fp, "%hu, %3[^,], %3[^,], %hu", &imm, rs1, rs2, &imm2);
+			case B_TYPE:
+				fscanf(fp, " %hu, %3[^,], %3[^,], %hu[^\n] ", &imm, rs1, rs2, &imm2);
 				printf("B-Type Read: %hu, %s, %s, %hu\n", imm, rd, rs1, imm2);
 				break;
-			case 'U':
-				fscanf(fp, "%3[^,], %u", rd, &imm32);
+			case U_TYPE:
+				fscanf(fp, " %3[^,], %u[^\n] ", rd, &imm32);
 				printf("U-Type Read: %s, %u\n", rd, imm32);
 				break;
-			case 'J':
-				fscanf(fp, "%3[^,], %u", rd, &imm32);
+			case J_TYPE:
+				fscanf(fp, " %3[^,], %u[^\n] ", rd, &imm32);
 				printf("J-Type Read: %s, %u\n", rd, imm32);
 				break;
 			default:
