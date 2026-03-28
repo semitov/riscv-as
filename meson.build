@@ -22,6 +22,18 @@ if gperf.found()
     )
 endif
 
+clangformat = find_program('clang-format', required: false)
+if clangformat.found()
+    run_target(
+        'format',
+        command: [
+            'ninja',
+            '-C', join_paths(meson.current_build_dir()),
+            'clang-format',
+        ],
+    )
+endif
+
 sources = []
 subdir('src')
 subdir('gperf')

@@ -11,6 +11,6 @@ $ ninja gperf
 $ meson compile
 ```
 
-### Definitions schema
+### Contributing
 
-Where you find `0xFF` it means that it doesn't have a `func7` field.
+Remember to format the code before making any contribute. Just run `ninja format` inside the `build/` folder.
