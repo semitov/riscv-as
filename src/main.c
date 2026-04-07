@@ -7,20 +7,20 @@
 
 int main(int argc, char **argv) {
 	arguments_s *arguments = {0};
+	int ret = 0;
 
 	arguments = argparse(argc, argv);
 	if (!arguments) {
-		goto cleanup;
+		return EXIT_FAILURE;
 	}
 
 	fprintf(stdout, "[info] compiling %s ...\n", arguments->file);
 
-	assemble_file(arguments->file);
-
-	goto cleanup;
+	ret = assemble_file(arguments->file);
+	if (ret != EXIT_SUCCESS) {
+		argparse_free(arguments);
+		return EXIT_FAILURE;
+	}
 
 	return EXIT_SUCCESS;
-
-cleanup:
-	argparse_free(arguments);
 }
