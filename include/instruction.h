@@ -3,11 +3,21 @@
 
 #include <stdint.h>
 
-#define REGISTER_LEN 4
+#define REGISTER_LEN 5
 #define NAME_LEN 64
 
 #define INT12_MAX ((1 << 11) - 1)
 #define INT12_MIN (-(1 << 11))
+
+/*
+ * LUI accepts any values which can be encoded in 20 bits, so we can unify two
+ * ranges to determine our MIN and MAX acceptable value:
+ * - unsigned: 0 to 1048576 (2^20)
+ * - signed: -524288 (-2^19) to 524287 (2^19 - 1)
+ *
+ */
+#define INT20_MAX ((1 << 20) - 1)
+#define INT20_MIN (-(1 << 19))
 
 #define R_TYPE 'R'
 #define I_TYPE 'I'
