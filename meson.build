@@ -12,6 +12,7 @@ subdir('src')
 subdir('gperf')
 
 #add_global_arguments('-DEVELOPER', language: 'c')
+add_global_arguments('-DINFO', language: 'c')
 
 inc = include_directories('include')
 gperf_inc = include_directories('gperf')
