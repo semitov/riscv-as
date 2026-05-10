@@ -1,3 +1,7 @@
+/*
+ * Command-line argument parser.
+ */
+
 #ifndef ASSEMBLER_ARGPARSER_H
 #define ASSEMBLER_ARGPARSER_H
 
