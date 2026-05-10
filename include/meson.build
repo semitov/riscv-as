@@ -1,3 +1,6 @@
-headers += files('argparser.h')
-headers += files('debug.h')
-headers += files('instruction.h')
+headers += files(
+    'argparser.h',
+    'debug.h',
+    'instruction.h',
+    'writer.h',
+)

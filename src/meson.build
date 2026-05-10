@@ -3,4 +3,5 @@ sources += files(
     'debug.c',
     'instruction.c',
     'main.c',
+    'writer.c',
 )

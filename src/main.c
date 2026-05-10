@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
 
 	ret = assemble_file(arguments->file);
 	if (ret != EXIT_SUCCESS) {
+		log_msg(LOG_ERROR, "%s", "assemble_file() failed");
 		argparse_free(arguments);
 		return EXIT_FAILURE;
 	}
