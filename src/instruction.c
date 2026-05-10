@@ -3,6 +3,7 @@
 #include "debug.h"
 #include "hash.h"
 #include <ctype.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,21 +18,34 @@
 #define GET_FI_FUNCT3(instr) (instr & 0x7000)
 #define GET_FI_RS1(instr) (instr & 0xF8000)
 #define GET_FI_RS2(instr) (instr & 0x1F00000)
-/* Return 1 if the string is made of only whitespaces */
-static int is_only_ws(const char *str) {
+
+/**
+ * @brief Returns true if the string is made of only whitespaces.
+ *
+ * @param str The string.
+ * @return true or false.
+ */
+static bool is_whitespaces_only(const char *str) {
 	while (*str != '\0') {
 		if (!isspace(*str)) {
-			return 0;
+			return false;
 		}
+
 		str++;
 	}
-	return 1;
+
+	return true;
 }
 
-/* Return 1 (true) if the opcode is a load/store one */
-static int is_load_store(const char *op) {
+/**
+ * @brief Returns true if the opcode is load/store.
+ *
+ * @param op Opcode.
+ * @return true or false.
+ */
+static bool is_load_store(const char *op) {
 	if (!op) {
-		return 0;
+		return false;
 	}
 
 	return strcmp(op, "lb") == 0 || strcmp(op, "lh") == 0 || strcmp(op, "lw") == 0 || strcmp(op, "lbu") == 0 ||
@@ -39,7 +53,10 @@ static int is_load_store(const char *op) {
 }
 
 /**
- * @return 1 if the instruction is a pseudo-instruction, 0 otherwise.
+ * @brief Returns true if the instruction is a pseudo-instruction.
+ *
+ * @param name Instruction.
+ * @return true or false.
  */
 static int is_pseudo_instr(const char *name) {
 	if (!name) {
@@ -217,6 +234,7 @@ static uint8_t get_register(char *reg) {
 
 	return regValue;
 }
+
 static int32_t encode(const instruction_s *instr, char *lineBuf, char *name) {
 	char rd[REGISTER_LEN] = {0}, rs1[REGISTER_LEN] = {0}, rs2[REGISTER_LEN] = {0};
 	int16_t imm = 0x0, imm2 = 0x0;
@@ -298,6 +316,7 @@ static int32_t encode(const instruction_s *instr, char *lineBuf, char *name) {
 	}
 	return res;
 }
+
 int assemble_file(const char *filename) {
 	FILE *fp = fopen(filename, "r");
 	if (!fp) {
@@ -315,7 +334,7 @@ int assemble_file(const char *filename) {
 			log_msg(LOG_ERROR, "[error] unknown instruction: %s\n", name);
 			break;
 		}
-		if (!is_only_ws(lineBuf)) {
+		if (!is_whitespaces_only(lineBuf)) {
 			if (is_pseudo_instr(name)) {
 				log_msg(LOG_INFO, "expanding pseudo-instruction: %s", name);
 				/* In RV32I some pseudo-instructions could require two actual

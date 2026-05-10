@@ -14,7 +14,6 @@
  * ranges to determine our MIN and MAX acceptable value:
  * - unsigned: 0 to 1048576 (2^20)
  * - signed: -524288 (-2^19) to 524287 (2^19 - 1)
- *
  */
 #define INT20_MAX ((1 << 20) - 1)
 #define INT20_MIN (-(1 << 19))
