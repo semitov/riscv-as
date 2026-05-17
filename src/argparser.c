@@ -24,6 +24,7 @@ const char doc[] = "semitov-riscv-as";
 
 static struct argp_option options[] = {
 	{"compile", 'c', "FILE", 0, "Compile an assembly file", -1},
+	{"elf", 'e', 0, 0, "Produce and elf binary", -1},
 	{0},
 };
 
@@ -33,6 +34,10 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
 	switch (key) {
 		case 'c': {
 			args->file = arg;
+			break;
+		}
+		case 'e': {
+			args->elf = true;
 			break;
 		}
 		default: {
@@ -52,6 +57,7 @@ arguments_s *argparse(int argc, char **argv) {
 
 	/* Default values */
 	arguments->file = NULL;
+	arguments->elf = false;
 
 	argp_parse(&argp, argc, argv, 0, 0, arguments);
 

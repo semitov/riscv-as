@@ -42,11 +42,13 @@ int main(int argc, char **argv) {
 	}
 
 	/* Test elf binary */
-	const char *binary = "a.out";
-	log_msg(LOG_INFO, "producing elf32 binary %s...", binary);
-	ret = writer32(binary);
-	if (ret != 0) {
-		log_msg(LOG_ERROR, "%s", "writer32() failed.\n");
+	if (arguments->elf) {
+		const char *binary = "a.out";
+		log_msg(LOG_INFO, "producing elf32 binary %s...", binary);
+		ret = writer32(binary);
+		if (ret != 0) {
+			log_msg(LOG_ERROR, "%s", "writer32() failed.\n");
+		}
 	}
 
 	return EXIT_SUCCESS;
