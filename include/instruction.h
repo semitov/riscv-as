@@ -59,7 +59,7 @@ typedef struct instruction {
 	uint8_t funct3;
 	uint8_t funct7;
 	char type;
-} instruction_s;
+} instruction;
 
 /**
  * @brief Assemble the file.
