@@ -17,6 +17,8 @@
 #ifndef ASSEMBLER_INSTRUCTION_H
 #define ASSEMBLER_INSTRUCTION_H
 
+#include "error.h"
+
 #include <stdint.h>
 
 #define REGISTER_LEN 5
@@ -24,6 +26,12 @@
 
 #define INT12_MAX ((1 << 11) - 1)
 #define INT12_MIN (-(1 << 11))
+
+#define INT13_MAX ((1 << 12) - 1)
+#define INT13_MIN (-(1 << 12))
+
+#define INT21_MAX ((1 << 20) - 1)
+#define INT21_MIN (-(1 << 20))
 
 /*
  * LUI accepts any values which can be encoded in 20 bits, so we can unify two
@@ -54,6 +62,6 @@ typedef struct instruction {
  *
  * @param filename File to assemble.
  */
-int assemble_file(const char *filename);
+assembler_error assemble_file(const char *filename);
 
 #endif
