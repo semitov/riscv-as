@@ -51,7 +51,7 @@ arguments_s *argparse(int argc, char **argv) {
 	}
 
 	/* Default values */
-	arguments->file = "test/base.s";
+	arguments->file = NULL;
 
 	argp_parse(&argp, argc, argv, 0, 0, arguments);
 
