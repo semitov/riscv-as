@@ -15,7 +15,6 @@
 	along with this program.  If not, see <https://www.gnu.org/licenses/>. */
 
 #include "writer.h"
-#include "debug.h"
 #include "error.h"
 
 #include <elf.h>
@@ -23,8 +22,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
-#define BASE_VADDR 0x80000000
 
 static void fill_ident32(unsigned char *ident) {
 	memset(ident, 0, EI_NIDENT);
@@ -44,7 +41,8 @@ static void fill_ident32(unsigned char *ident) {
 	ident[EI_ABIVERSION] = 0;
 }
 
-static void fill_elf_header(Elf32_Ehdr *elf_header, size_t code_offset, size_t shoff, size_t shnum, size_t shstrndx) {
+static void fill_elf_header(Elf32_Ehdr *elf_header, size_t code_offset, size_t shoff, size_t shnum, size_t shstrndx,
+							uint32_t base_vaddr) {
 	memset(elf_header, 0, sizeof(*elf_header));
 
 	fill_ident32(elf_header->e_ident);
@@ -54,8 +52,9 @@ static void fill_elf_header(Elf32_Ehdr *elf_header, size_t code_offset, size_t s
 	elf_header->e_version = EV_CURRENT;
 
 	/* Virtual address of code */
-	elf_header->e_entry = BASE_VADDR + code_offset;
-	elf_header->e_flags = EF_RISCV_RVC;
+	elf_header->e_entry = base_vaddr + code_offset;
+	// elf_header->e_flags = EF_RISCV_RVC;
+	elf_header->e_flags = 0;
 	elf_header->e_ehsize = sizeof(Elf32_Ehdr);
 
 	/* Program header starts after ELF header */
@@ -71,7 +70,7 @@ static void fill_elf_header(Elf32_Ehdr *elf_header, size_t code_offset, size_t s
 	elf_header->e_shstrndx = shstrndx;
 }
 
-static void fill_program_header(Elf32_Phdr *program_header, size_t file_size) {
+static void fill_program_header(Elf32_Phdr *program_header, size_t file_size, uint32_t base_vaddr) {
 	memset(program_header, 0, sizeof(*program_header));
 
 	program_header->p_type = PT_LOAD;
@@ -80,14 +79,14 @@ static void fill_program_header(Elf32_Phdr *program_header, size_t file_size) {
 	program_header->p_offset = 0;
 
 	/* Virtual memory base */
-	program_header->p_vaddr = BASE_VADDR;
-	program_header->p_paddr = BASE_VADDR;
+	program_header->p_vaddr = base_vaddr;
+	program_header->p_paddr = base_vaddr;
 
 	program_header->p_filesz = file_size;
 	program_header->p_memsz = file_size;
 
-	/* Read + Execute */
-	program_header->p_flags = PF_R | PF_X;
+	/* Read + Write + Execute */
+	program_header->p_flags = PF_R | PF_W | PF_X;
 
 	program_header->p_align = 0x1000;
 }
@@ -106,7 +105,7 @@ static void fill_shstrtab_section_header(Elf32_Shdr *section_header, size_t offs
 	section_header->sh_addralign = 1;
 }
 
-assembler_error writer32(const char *filename, uint8_t *code, size_t code_len) {
+assembler_error writer32(const char *filename, uint8_t *code, size_t code_len, uint32_t base_vaddr) {
 	static const char shstrtab[] = "\0";
 
 	const size_t code_offset = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);
@@ -117,16 +116,16 @@ assembler_error writer32(const char *filename, uint8_t *code, size_t code_len) {
 	const size_t shnum = 2;
 	const size_t shstrndx = 1;
 
-	const size_t file_size = shoff + (sizeof(Elf32_Shdr) * shnum);
-	log_msg(LOG_DEBUG, "File size: %ld", file_size);
+	// const size_t file_size = shoff + (sizeof(Elf32_Shdr) * shnum);
+	// log_msg(LOG_DEBUG, "File size: %ld", file_size);
 
 	Elf32_Ehdr elf_header;
 	Elf32_Phdr program_header;
 	Elf32_Shdr section_header;
 	Elf32_Shdr shstrtab_section_header;
 
-	fill_elf_header(&elf_header, code_offset, shoff, shnum, shstrndx);
-	fill_program_header(&program_header, code_end);
+	fill_elf_header(&elf_header, code_offset, shoff, shnum, shstrndx, base_vaddr);
+	fill_program_header(&program_header, code_end, base_vaddr);
 
 	fill_section_header(&section_header);
 	fill_shstrtab_section_header(&shstrtab_section_header, shstrtab_offset, shstrtab_size);

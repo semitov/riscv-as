@@ -33,6 +33,6 @@
  * @param code Bytes array.
  * @param code_len Array length.
  */
-assembler_error writer32(const char *filename, uint8_t *code, size_t code_len);
+assembler_error writer32(const char *filename, uint8_t *code, size_t code_len, uint32_t base_vaddr);
 
 #endif

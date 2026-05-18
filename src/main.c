@@ -18,7 +18,6 @@
 #include "debug.h"
 #include "error.h"
 #include "instruction.h"
-#include "utils.h"
 #include "writer.h"
 
 #include <stdint.h>
@@ -27,9 +26,6 @@
 int main(int argc, char **argv) {
 	int exit_code = EXIT_FAILURE;
 	arguments_s *arguments = NULL;
-
-	bool little_endian = is_little_endian();
-	log_msg(LOG_DEBUG, "is system little endian? %d", little_endian);
 
 	arguments = argparse(argc, argv);
 	if (!arguments) {
@@ -46,7 +42,6 @@ int main(int argc, char **argv) {
 		}
 
 		log_msg(LOG_DEBUG, "Code len: %ld", code_len);
-		print_code(code, code_len);
 	}
 
 	if (code_len) {
@@ -58,7 +53,7 @@ int main(int argc, char **argv) {
 			filename = "a.out";
 		}
 
-		assembler_error err = writer32(filename, code, code_len);
+		assembler_error err = writer32(filename, code, code_len, arguments->base_vaddr);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "writer32() failed: %s", assembler_error_str(err));
 			goto cleanup;

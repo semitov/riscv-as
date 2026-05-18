@@ -21,14 +21,15 @@
 #ifndef ASSEMBLER_ARGPARSER_H
 #define ASSEMBLER_ARGPARSER_H
 
-#include <stdbool.h>
+#include <stdint.h>
 
 /**
  * @brief Holds the parsed CLI arguments for the assembler.
  */
 typedef struct arguments {
-	char *infile;  /**< Path to the source file to assemble */
-	char *outfile; /**< Path to the output file binary */
+	char *infile;		/**< Path to the source file to assemble */
+	char *outfile;		/**< Path to the output file binary */
+	uint32_t base_vaddr; /* riscv-pk uses different virtual address (user-space) */
 } arguments_s;
 
 /**
