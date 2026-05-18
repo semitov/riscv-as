@@ -52,7 +52,6 @@ static assembler_error pseudo_expansion_add(pseudo_expansion *expansion, const i
 	expansion->instructions[expansion->count] = instr;
 	snprintf(expansion->lines[expansion->count], sizeof(expansion->lines[expansion->count]), "%s", line);
 	expansion->count++;
-
 	return ASSEMBLER_OK;
 }
 
@@ -89,12 +88,111 @@ static bool is_load_store(const char *op) {
 		   strcmp(op, "lhu") == 0 || strcmp(op, "sb") == 0 || strcmp(op, "sh") == 0 || strcmp(op, "sw") == 0;
 }
 
+static assembler_error expand_li_instr(char *rd, int64_t imm64, char *line, size_t len,
+									   pseudo_expansion *out_expansion) {
+
+	int32_t imm32 = (int32_t)imm64;
+	if (imm32 >= INT12_MIN && imm32 <= INT12_MAX) {
+		const instruction *addi = find_instruction("addi", strlen("addi"));
+		if (!addi) {
+			return ASSEMBLER_UNKNOWN_INSTRUCTION;
+		}
+		snprintf(line, len, "addi %s, zero, %d", rd, imm32);
+		return pseudo_expansion_add(out_expansion, addi, line);
+	}
+	int32_t lo = (imm32 << 20) >> 20;
+	int32_t hi_20 = (imm32 - lo) >> 12;
+
+	const instruction *lui = find_instruction("lui", strlen("lui"));
+	if (!lui) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "lui %s, %d", rd, hi_20);
+
+	assembler_error err = pseudo_expansion_add(out_expansion, lui, line);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+	if (lo != 0) {
+		const instruction *addi = find_instruction("addi", strlen("addi"));
+		if (!addi) {
+			return ASSEMBLER_UNKNOWN_INSTRUCTION;
+		}
+		snprintf(line, len, "addi %s, %s, %d", rd, rd, lo);
+		return pseudo_expansion_add(out_expansion, addi, line);
+	}
+	return ASSEMBLER_OK;
+}
+static assembler_error expand_mv_instr(char *rs1, char *rd, char *line, size_t len, pseudo_expansion *out_expansion) {
+	/* mv is implemented with 'addi rs, r1, 0' */
+	const instruction *addi = find_instruction("addi", strlen("addi"));
+	if (!addi) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "addi %s, %s, 0", rd, rs1);
+
+	return pseudo_expansion_add(out_expansion, addi, line);
+}
+
+static assembler_error expand_neg_instr(char *rs1, char *rd, char *line, size_t len, pseudo_expansion *out_expansion) {
+	/* neg is implemented with 'sub rd, zero, rs1' */
+	const instruction *sub = find_instruction("sub", strlen("sub"));
+	if (!sub) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "sub %s, zero, %s", rd, rs1);
+
+	return pseudo_expansion_add(out_expansion, sub, line);
+}
+
+static assembler_error expand_nop_instr(char *line, size_t len, pseudo_expansion *out_expansion) {
+	const instruction *addi = find_instruction("addi", strlen("addi"));
+	if (!addi) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "addi zero, zero, 0");
+
+	return pseudo_expansion_add(out_expansion, addi, line);
+}
+
+static assembler_error expand_not_instr(char *rs1, char *rd, char *line, size_t len, pseudo_expansion *out_expansion) {
+	/* not is implemented with 'xori rd, rs1, -1' */
+	const instruction *xori = find_instruction("xori", strlen("xori"));
+	if (!xori) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "xori %s, %s, -1", rd, rs1);
+
+	return pseudo_expansion_add(out_expansion, xori, line);
+}
+
+static assembler_error expand_seqz_instr(char *rs1, char *rd, char *line, size_t len, pseudo_expansion *out_expansion) {
+	/* seqz is implemented with 'sltiu rd, rs1, 1' */
+	const instruction *sltiu = find_instruction("sltiu", strlen("sltiu"));
+	if (!sltiu) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "sltiu %s, %s, 1", rd, rs1);
+
+	return pseudo_expansion_add(out_expansion, sltiu, line);
+}
+
+static assembler_error expand_snez_instr(char *rs2, char *rd, char *line, size_t len, pseudo_expansion *out_expansion) {
+	/* snez is implemented with 'sltu rd, x0, rs2' */
+	const instruction *sltu = find_instruction("sltu", strlen("sltu"));
+	if (!sltu) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "sltu %s, zero, %s", rd, rs2);
+
+	return pseudo_expansion_add(out_expansion, sltu, line);
+}
+
 static assembler_error expand_pseudo_instr(const instruction *instr, const char *lineBuf,
 										   pseudo_expansion *out_expansion) {
 	if (!instr || !lineBuf || !out_expansion) {
 		return ASSEMBLER_PARSE_ERROR;
 	}
-
 	pseudo_expansion_reset(out_expansion);
 
 	char rd[REGISTER_LEN] = {0};
@@ -109,48 +207,9 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 			return ASSEMBLER_PARSE_ERROR;
 		}
 
-		if (imm64 < INT32_MIN || imm64 > INT32_MAX) {
-			log_msg(LOG_ERROR,
-					"Invalid immediate value in: %s\n"
-					"32 bit registers can't hold such value",
-					lineBuf);
-			return ASSEMBLER_REGISTER_VALUE;
-		}
+		CHECK_IMMEDIATE(imm64, INT32_MIN, INT32_MAX, lineBuf);
 
-		int32_t imm32 = (int32_t)imm64;
-		if (imm32 >= INT12_MIN && imm32 <= INT12_MAX) {
-			const instruction *addi = find_instruction("addi", strlen("addi"));
-			if (!addi) {
-				return ASSEMBLER_UNKNOWN_INSTRUCTION;
-			}
-			snprintf(line, sizeof(line), "addi %s, zero, %d", rd, imm32);
-			return pseudo_expansion_add(out_expansion, addi, line);
-		}
-
-		int32_t lo = (imm32 << 20) >> 20;
-		int32_t hi_20 = (imm32 - lo) >> 12;
-
-		const instruction *lui = find_instruction("lui", strlen("lui"));
-		if (!lui) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "lui %s, %d", rd, hi_20);
-
-		assembler_error err = pseudo_expansion_add(out_expansion, lui, line);
-		if (err != ASSEMBLER_OK) {
-			return err;
-		}
-
-		if (lo != 0) {
-			const instruction *addi = find_instruction("addi", strlen("addi"));
-			if (!addi) {
-				return ASSEMBLER_UNKNOWN_INSTRUCTION;
-			}
-			snprintf(line, sizeof(line), "addi %s, %s, %d", rd, rd, lo);
-			return pseudo_expansion_add(out_expansion, addi, line);
-		}
-
-		return ASSEMBLER_OK;
+		return expand_li_instr(rd, imm64, line, 512, out_expansion);
 	}
 
 	if (strcmp(instr->name, "mv") == 0) {
@@ -159,14 +218,7 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 			return ASSEMBLER_PARSE_ERROR;
 		}
 
-		/* mv is implemented with 'addi rs, r1, 0' */
-		const instruction *addi = find_instruction("addi", strlen("addi"));
-		if (!addi) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "addi %s, %s, 0", rd, rs1);
-
-		return pseudo_expansion_add(out_expansion, addi, line);
+		return expand_mv_instr(rs1, rd, line, 512, out_expansion);
 	}
 
 	if (strcmp(instr->name, "neg") == 0) {
@@ -174,26 +226,12 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 			log_msg(LOG_ERROR, "Failed to parse neg: %s", lineBuf);
 			return ASSEMBLER_PARSE_ERROR;
 		}
-
-		/* neg is implemented with 'sub rd, zero, rs1' */
-		const instruction *sub = find_instruction("sub", strlen("sub"));
-		if (!sub) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "sub %s, zero, %s", rd, rs1);
-
-		return pseudo_expansion_add(out_expansion, sub, line);
+		return expand_neg_instr(rs1, rd, line, 512, out_expansion);
 	}
 
 	if (strcmp(instr->name, "nop") == 0) {
 		/* nop is implemented with 'addi x0, x0, 0' */
-		const instruction *addi = find_instruction("addi", strlen("addi"));
-		if (!addi) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "addi zero, zero, 0");
-
-		return pseudo_expansion_add(out_expansion, addi, line);
+		return expand_nop_instr(line, 512, out_expansion);
 	}
 
 	if (strcmp(instr->name, "not") == 0) {
@@ -201,15 +239,7 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 			log_msg(LOG_ERROR, "Failed to parse not: %s", lineBuf);
 			return ASSEMBLER_PARSE_ERROR;
 		}
-
-		/* not is implemented with 'xori rd, rs1, -1' */
-		const instruction *xori = find_instruction("xori", strlen("xori"));
-		if (!xori) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "xori %s, %s, -1", rd, rs1);
-
-		return pseudo_expansion_add(out_expansion, xori, line);
+		return expand_not_instr(rs1, rd, line, 512, out_expansion);
 	}
 
 	if (strcmp(instr->name, "ret") == 0) {
@@ -224,15 +254,7 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 			log_msg(LOG_ERROR, "Failed to parse seqz: %s", lineBuf);
 			return ASSEMBLER_PARSE_ERROR;
 		}
-
-		/* seqz is implemented with 'sltiu rd, rs1, 1' */
-		const instruction *sltiu = find_instruction("sltiu", strlen("sltiu"));
-		if (!sltiu) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "sltiu %s, %s, 1", rd, rs1);
-
-		return pseudo_expansion_add(out_expansion, sltiu, line);
+		return expand_seqz_instr(rs1, rd, line, 512, out_expansion);
 	}
 
 	if (strcmp(instr->name, "snez") == 0) {
@@ -240,17 +262,8 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 			log_msg(LOG_ERROR, "Failed to parse snez: %s", lineBuf);
 			return ASSEMBLER_PARSE_ERROR;
 		}
-
-		/* snez is implemented with 'sltu rd, x0, rs2' */
-		const instruction *sltu = find_instruction("sltu", strlen("sltu"));
-		if (!sltu) {
-			return ASSEMBLER_UNKNOWN_INSTRUCTION;
-		}
-		snprintf(line, sizeof(line), "sltu %s, zero, %s", rd, rs2);
-
-		return pseudo_expansion_add(out_expansion, sltu, line);
+		return expand_snez_instr(rs2, rd, line, 512, out_expansion);
 	}
-
 	log_msg(LOG_ERROR, "Unknown pseudo-instruction: %s", instr->name);
 
 	return ASSEMBLER_UNKNOWN_PSEUDO;
@@ -371,7 +384,107 @@ static assembler_error parse_register(const char *reg, uint8_t *out_value) {
 			return ASSEMBLER_INVALID_REGISTER;
 	}
 }
+static assembler_error handle_r_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
+										   uint8_t *rs2_val, char *rd, uint8_t *rd_val, int32_t *res) {
+	assembler_error err = parse_register(rs2, rs2_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
 
+	err = parse_register(rs1, rs1_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	err = parse_register(rd, rd_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	*res = ASSEMBLE_R_TYPE(instr, *rs2_val, *rs1_val, *rd_val);
+
+	return err;
+}
+
+static assembler_error handle_i_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, int32_t imm, char *rd,
+										   uint8_t *rd_val, int32_t *res) {
+
+	assembler_error err = parse_register(rs1, rs1_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	err = parse_register(rd, rd_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	*res = ASSEMBLE_I_TYPE(instr, *rs1_val, imm, *rd_val);
+
+	return err;
+}
+
+static assembler_error handle_s_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
+										   uint8_t *rs2_val, int32_t imm, int32_t *res) {
+	assembler_error err = parse_register(rs2, rs2_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	err = parse_register(rs1, rs1_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	uint32_t imm_u = (uint32_t)imm;
+
+	*res = ASSEMBLE_S_TYPE(instr, *rs1_val, *rs2_val, imm_u);
+
+	return err;
+}
+static assembler_error handle_b_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
+										   uint8_t *rs2_val, int32_t imm, int32_t *res) {
+	uint32_t imm_u;
+	assembler_error err = parse_register(rs1, rs1_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	err = parse_register(rs2, rs2_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+	imm_u = (uint32_t)imm;
+
+	*res = ASSEMBLE_B_TYPE(instr, *rs1_val, *rs2_val, imm_u);
+
+	return err;
+}
+static assembler_error handle_u_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm,
+										   int32_t *res) {
+	assembler_error err = parse_register(rd, rd_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	*res = ASSEMBLE_U_TYPE(instr, imm, *rd_val);
+
+	return err;
+}
+
+static assembler_error handle_j_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm,
+										   int32_t *res) {
+	uint32_t imm_u;
+	assembler_error err = parse_register(rd, rd_val);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+	imm_u = (uint32_t)imm;
+
+	*res = ASSEMBLE_J_TYPE(instr, *rd_val, imm_u);
+
+	return err;
+}
 static assembler_error encode(const instruction *instr, const char *lineBuf, const char *name, int32_t *out_encoded) {
 	if (!instr || !lineBuf || !name || !out_encoded) {
 		return ASSEMBLER_PARSE_ERROR;
@@ -381,14 +494,12 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 	char rs1[REGISTER_LEN] = {0};
 	char rs2[REGISTER_LEN] = {0};
 	long imm_long = 0;
-	int32_t imm = 0;
 	int32_t res = 0;
 	uint8_t rd_val = 0;
 	uint8_t rs1_val = 0;
 	uint8_t rs2_val = 0;
 	assembler_error err = ASSEMBLER_OK;
 	int scan_res = 0;
-	uint32_t imm_u = 0;
 
 	switch (instr->type) {
 		case R_TYPE:
@@ -398,23 +509,10 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 			}
 			log_msg(LOG_DEBUG, "R-Type Read: %s %s %s", rd, rs1, rs2);
 
-			err = parse_register(rs2, &rs2_val);
+			err = handle_r_type_instr(instr, rs1, &rs1_val, rs2, &rs2_val, rd, &rd_val, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
 			}
-
-			err = parse_register(rs1, &rs1_val);
-			if (err != ASSEMBLER_OK) {
-				return err;
-			}
-
-			err = parse_register(rd, &rd_val);
-			if (err != ASSEMBLER_OK) {
-				return err;
-			}
-
-			res = (int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)rs2_val << 20) | ((uint32_t)rs1_val << 15) |
-							((uint32_t)instr->funct3 << 12) | ((uint32_t)rd_val << 7) | instr->opcode);
 			log_msg(LOG_DEBUG, "Write: %08x", res);
 			break;
 		case I_TYPE:
@@ -437,25 +535,14 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 				}
 			}
 
-			if (imm_long < INT12_MIN || imm_long > INT12_MAX) {
-				log_msg(LOG_ERROR, "Invalid immediate value: %s", lineBuf);
-				return ASSEMBLER_INVALID_IMMEDIATE;
-			}
-			imm = (int32_t)imm_long;
+			CHECK_IMMEDIATE(imm_long, INT12_MIN, INT12_MAX, lineBuf);
+
 			log_msg(LOG_DEBUG, "I-Type Read: %s, %s, %li", rd, rs1, imm_long);
 
-			err = parse_register(rs1, &rs1_val);
+			err = handle_i_type_instr(instr, rs1, &rs1_val, (int32_t)imm_long, rd, &rd_val, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
 			}
-
-			err = parse_register(rd, &rd_val);
-			if (err != ASSEMBLER_OK) {
-				return err;
-			}
-
-			res = (int32_t)((((uint32_t)imm & 0xFFFu) << 20) | ((uint32_t)rs1_val << 15) |
-							((uint32_t)instr->funct3 << 12) | ((uint32_t)rd_val << 7) | instr->opcode);
 			log_msg(LOG_DEBUG, "Write: %08x", res);
 			break;
 		case S_TYPE:
@@ -471,26 +558,14 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 				imm_long = 0;
 			}
 
-			if (imm_long < INT12_MIN || imm_long > INT12_MAX) {
-				log_msg(LOG_ERROR, "Invalid immediate value: %s", lineBuf);
-				return ASSEMBLER_INVALID_IMMEDIATE;
-			}
-			imm = (int32_t)imm_long;
+			CHECK_IMMEDIATE(imm_long, INT12_MIN, INT12_MAX, lineBuf);
+
 			log_msg(LOG_DEBUG, "S-Type Read: %li, %s, %s", imm_long, rs1, rs2);
 
-			err = parse_register(rs2, &rs2_val);
+			err = handle_s_type_instr(instr, rs1, &rs1_val, rs2, &rs2_val, (int32_t)imm_long, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
 			}
-
-			err = parse_register(rs1, &rs1_val);
-			if (err != ASSEMBLER_OK) {
-				return err;
-			}
-
-			imm_u = (uint32_t)imm;
-			res = (int32_t)((((imm_u >> 5) & 0x7Fu) << 25) | ((uint32_t)rs2_val << 20) | ((uint32_t)rs1_val << 15) |
-							((uint32_t)instr->funct3 << 12) | ((imm_u & 0x1Fu) << 7) | instr->opcode);
 			log_msg(LOG_DEBUG, "Write: %08x", res);
 			break;
 		case B_TYPE:
@@ -499,27 +574,14 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 				return ASSEMBLER_PARSE_ERROR;
 			}
 
-			if (imm_long < INT13_MIN || imm_long > INT13_MAX || (imm_long & 0x1) != 0) {
-				log_msg(LOG_ERROR, "Invalid branch immediate value: %s", lineBuf);
-				return ASSEMBLER_INVALID_IMMEDIATE;
-			}
-			imm = (int32_t)imm_long;
+			CHECK_IMM_AND_LAST_B(imm_long, INT13_MIN, INT13_MAX, lineBuf, "branch");
+
 			log_msg(LOG_DEBUG, "B-Type Read: %s, %s, %li", rs1, rs2, imm_long);
 
-			err = parse_register(rs1, &rs1_val);
+			err = handle_b_type_instr(instr, rs1, &rs1_val, rs2, &rs2_val, (int32_t)imm_long, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
 			}
-
-			err = parse_register(rs2, &rs2_val);
-			if (err != ASSEMBLER_OK) {
-				return err;
-			}
-			imm_u = (uint32_t)imm;
-
-			res = (int32_t)((((imm_u >> 12) & 0x1u) << 31) | (((imm_u >> 5) & 0x3Fu) << 25) |
-							((uint32_t)rs2_val << 20) | ((uint32_t)rs1_val << 15) | ((uint32_t)instr->funct3 << 12) |
-							(((imm_u >> 1) & 0xFu) << 8) | (((imm_u >> 11) & 0x1u) << 7) | instr->opcode);
 			log_msg(LOG_DEBUG, "Write: %08x", res);
 			break;
 		case U_TYPE:
@@ -527,19 +589,15 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 				log_msg(LOG_ERROR, "Failed to parse U-type: %s", lineBuf);
 				return ASSEMBLER_PARSE_ERROR;
 			}
-			if (imm_long < INT20_MIN || imm_long > INT20_MAX) {
-				log_msg(LOG_ERROR, "Invalid immediate value: %s", lineBuf);
-				return ASSEMBLER_INVALID_IMMEDIATE;
-			}
-			imm = (int32_t)imm_long;
+
+			CHECK_IMMEDIATE(imm_long, INT20_MIN, INT20_MAX, lineBuf);
+
 			log_msg(LOG_DEBUG, "U-Type Read: %s, %li", rd, imm_long);
 
-			err = parse_register(rd, &rd_val);
+			err = handle_u_type_instr(instr, rd, &rd_val, (int32_t)imm_long, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
 			}
-
-			res = (int32_t)((((uint32_t)imm & 0xFFFFFu) << 12) | ((uint32_t)rd_val << 7) | instr->opcode);
 			log_msg(LOG_DEBUG, "Write: %08x", res);
 			break;
 		case J_TYPE:
@@ -548,22 +606,14 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 				return ASSEMBLER_PARSE_ERROR;
 			}
 
-			if (imm_long < INT21_MIN || imm_long > INT21_MAX || (imm_long & 0x1) != 0) {
-				log_msg(LOG_ERROR, "Invalid jump immediate value: %s", lineBuf);
-				return ASSEMBLER_INVALID_IMMEDIATE;
-			}
-			imm = (int32_t)imm_long;
+			CHECK_IMM_AND_LAST_B(imm_long, INT21_MIN, INT21_MAX, lineBuf, "jump");
+
 			log_msg(LOG_DEBUG, "J-Type Read: %s, %li", rd, imm_long);
 
-			err = parse_register(rd, &rd_val);
+			err = handle_j_type_instr(instr, rd, &rd_val, (int32_t)imm_long, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
 			}
-			imm_u = (uint32_t)imm;
-
-			res = (int32_t)((((imm_u >> 20) & 0x1u) << 31) | (((imm_u >> 1) & 0x3FFu) << 21) |
-							(((imm_u >> 11) & 0x1u) << 20) | (((imm_u >> 12) & 0xFFu) << 12) | ((uint32_t)rd_val << 7) |
-							instr->opcode);
 			log_msg(LOG_DEBUG, "Write: %08x", res);
 			break;
 		default:
@@ -576,7 +626,23 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 
 	return ASSEMBLER_OK;
 }
+static assembler_error encode_pseudo_instr(pseudo_expansion expansion, int32_t *encoded, size_t *counter) {
+	assembler_error err = ASSEMBLER_OK;
+	// TODO check i < encoded arr size
+	size_t i;
+	for (i = 0; i < expansion.count; i++) {
+		err = encode(expansion.instructions[i], expansion.lines[i], expansion.instructions[i]->name, &encoded[i]);
+		if (err != ASSEMBLER_OK) {
+			break;
+		}
 
+		log_msg(LOG_DEBUG, "%02lx:\t%08x\t%s", (unsigned long)*counter, encoded, expansion.lines[i]);
+		*counter += 4;
+	}
+	/* Last element is 0 as a string terminator */
+	encoded[i] = 0;
+	return err;
+}
 assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_len) {
 	if (!filename) {
 		return ASSEMBLER_FILE_ERROR;
@@ -593,7 +659,8 @@ assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_
 	char lineBuf[512];
 	size_t counter = 0;
 	assembler_error err = ASSEMBLER_OK;
-	int32_t encoded = 0;
+	// int32_t encoded = 0;
+	int32_t encoded[4];
 	size_t code_index = 0;
 
 	while (fgets(lineBuf, sizeof(lineBuf), fp)) {
@@ -625,15 +692,7 @@ assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_
 				break;
 			}
 
-			for (size_t i = 0; i < expansion.count; i++) {
-				err = encode(expansion.instructions[i], expansion.lines[i], expansion.instructions[i]->name, &encoded);
-				if (err != ASSEMBLER_OK) {
-					break;
-				}
-
-				log_msg(LOG_DEBUG, "%02lx:\t%08x\t%s", (unsigned long)counter, encoded, expansion.lines[i]);
-				counter += 4;
-			}
+			err = encode_pseudo_instr(expansion, encoded, &counter);
 
 			if (err != ASSEMBLER_OK) {
 				break;
@@ -641,21 +700,21 @@ assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_
 		} else {
 			log_msg(LOG_INFO, "fetching instruction: %s (%c TYPE)", name, instr->type);
 
-			err = encode(instr, lineBuf, name, &encoded);
+			err = encode(instr, lineBuf, name, &encoded[0]);
 			if (err != ASSEMBLER_OK) {
 				break;
 			}
 
-			log_msg(LOG_DEBUG, "%02lx:\t%08x\t%s", (unsigned long)counter, encoded, lineBuf);
+			log_msg(LOG_DEBUG, "%02lx:\t%08x\t%s", (unsigned long)counter, &encoded[0], lineBuf);
 			counter += 4;
 		}
 
 		/* Copy into code */
 		/* @TODO: check if code_len is bigger than code_index */
-		uint8_t *ep = (uint8_t *)&encoded;
+		/*uint8_t *ep = (uint8_t *)&encoded;
 		for (int i = 0; i < 4; ++i) {
 			code[code_index++] = ep[i];
-		}
+			}*/
 	}
 
 	*code_len = code_index;
