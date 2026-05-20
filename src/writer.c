@@ -138,21 +138,31 @@ assembler_error writer32(const char *filename, segment *segments, uint32_t base_
 		return ASSEMBLER_ELF_ERROR;
 	}
 
-	// @TODO: improve error handling
-
-	fwrite(&elf_header, sizeof(Elf32_Ehdr), 1, fp);
-	fwrite(&program_header, sizeof(Elf32_Phdr), 1, fp);
+	if (fwrite(&elf_header, sizeof(Elf32_Ehdr), 1, fp) != 1 ||
+		fwrite(&program_header, sizeof(Elf32_Phdr), 1, fp) != 1) {
+		fclose(fp);
+		return ASSEMBLER_ELF_ERROR;
+	}
 
 	if (text_len > 0) {
-		fwrite(segments[SEGMENT_TEXT].data, text_len, 1, fp);
+		if (fwrite(segments[SEGMENT_TEXT].data, text_len, 1, fp) != 1) {
+			fclose(fp);
+			return ASSEMBLER_ELF_ERROR;
+		}
 	}
 
 	if (data_len > 0) {
-		fwrite(segments[SEGMENT_TEXT].data, text_len, 1, fp);
+		if (fwrite(segments[SEGMENT_DATA].data, data_len, 1, fp) != 1) {
+			fclose(fp);
+			return ASSEMBLER_ELF_ERROR;
+		}
 	}
 
-	fwrite(shstrtab, shstrtab_size, 1, fp);
-	fwrite(section_headers, sizeof(Elf32_Shdr), SH_NUM_SECTIONS, fp);
+	if (fwrite(shstrtab, shstrtab_size, 1, fp) != 1 ||
+		fwrite(section_headers, sizeof(Elf32_Shdr), SH_NUM_SECTIONS, fp) != SH_NUM_SECTIONS) {
+		fclose(fp);
+		return ASSEMBLER_ELF_ERROR;
+	}
 
 	fclose(fp);
 	return ASSEMBLER_OK;
