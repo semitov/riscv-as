@@ -4,6 +4,7 @@ sources += files(
     'error.c',
     'instruction.c',
     'main.c',
+    'symtable.c',
     'utils.c',
     'writer.c',
 )

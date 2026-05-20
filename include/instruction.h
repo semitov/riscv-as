@@ -18,6 +18,7 @@
 #define ASSEMBLER_INSTRUCTION_H
 
 #include "error.h"
+#include "symtable.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -115,12 +116,25 @@ typedef struct instruction {
 	char type;
 } instruction;
 
+typedef struct assembler_ctx {
+	segment segments[SEGMENTS_NUM];
+	symtable table;
+} assembler_ctx;
+
 /**
  * @brief Assemble the file.
  *
  * @param filename File to assemble.
  * @param[out] ctx Assembler's ctx.
  */
-assembler_error assemble_file(const char *filename, segment *assembler_ctx);
+assembler_error assemble_file(const char *filename, assembler_ctx *ctx);
+
+/**
+ * @brief Scans the file to calculate labels addresses.
+ *
+ * @param filename File to scan.
+ * @param ctx Assembler's context.
+ */
+assembler_error scan_labels(const char *filename, assembler_ctx *ctx);
 
 #endif
