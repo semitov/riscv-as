@@ -36,6 +36,9 @@
 #define INT13_MAX ((1 << 12) - 1)
 #define INT13_MIN (-(1 << 12))
 
+#define INT20_MAX ((1 << 20) - 1)
+#define INT20_MIN (-(1 << 19))
+
 #define INT21_MAX ((1 << 20) - 1)
 #define INT21_MIN (-(1 << 20))
 
@@ -52,15 +55,6 @@
 		log_msg(LOG_ERROR, "Invalid %s immediate value: %s", instr_type, lineBuf);                                     \
 		return ASSEMBLER_INVALID_IMMEDIATE;                                                                            \
 	}
-
-/*
- * LUI accepts any values which can be encoded in 20 bits, so we can unify two
- * ranges to determine our MIN and MAX acceptable value:
- * - unsigned: 0 to 1048576 (2^20)
- * - signed: -524288 (-2^19) to 524287 (2^19 - 1)
- */
-#define INT20_MAX ((1 << 20) - 1)
-#define INT20_MIN (-(1 << 19))
 
 #define R_TYPE 'R'
 #define I_TYPE 'I'
@@ -96,6 +90,20 @@
 
 #define ASSEMBLE_Z_TYPE(instr)                                                                                         \
 	(int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)instr->funct3 << 12) | instr->opcode);
+
+typedef enum segment_type {
+	SEGMENT_TEXT,
+	SEGMENT_DATA,
+	SEGMENT_BSS,
+} segment_type;
+
+typedef struct segment {
+	segment_type type;
+	uint8_t *data;
+	uint32_t vaddr;
+	size_t size;
+	size_t capacity;
+} segment;
 
 typedef struct instruction {
 	char *name;
