@@ -21,6 +21,7 @@ static const message messages[] = {
 	{ASSEMBLER_UNKNOWN_INSTRUCTION, "Unknown instruction"},
 	{ASSEMBLER_ELF_ERROR, "Error while producing elf binary"},
 	{ASSEMBLER_NULL_ERROR, "NULL pointer"},
+	{ASSEMBLER_SYM_NOT_FOUND, "Symbol not found"},
 };
 
 const char *assembler_error_str(assembler_error err) {
