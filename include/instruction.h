@@ -42,14 +42,14 @@
 #define INT21_MAX ((1 << 20) - 1)
 #define INT21_MIN (-(1 << 20))
 
-/* Check if immediate is in specified boundaries */
+// Check if immediate is in specified boundaries
 #define CHECK_IMMEDIATE(imm, MIN, MAX, buf)                                                                            \
 	if (imm < MIN || imm > MAX) {                                                                                      \
 		log_msg(LOG_ERROR, "Invalid immediate value: %s", buf);                                                        \
 		return ASSEMBLER_INVALID_IMMEDIATE;                                                                            \
 	}
 
-/* Check if immediate is in specified boundaries and it's last bit */
+// Check if immediate is in specified boundaries and it's last bit
 #define CHECK_IMM_AND_LAST_B(imm, MIN, MAX, buf, instr_type)                                                           \
 	if (imm < MIN || imm > MAX || (imm_long & 0x1) != 0) {                                                             \
 		log_msg(LOG_ERROR, "Invalid %s immediate value: %s", instr_type, lineBuf);                                     \

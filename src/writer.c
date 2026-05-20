@@ -31,9 +31,9 @@ static void fill_ident32(unsigned char *ident) {
 	ident[EI_MAG2] = ELFMAG2;
 	ident[EI_MAG3] = ELFMAG3;
 
-	/* 32 bits elf */
+	// 32 bits elf
 	ident[EI_CLASS] = ELFCLASS32;
-	/* Little-endian */
+	// Little-endian
 	ident[EI_DATA] = ELFDATA2LSB;
 	ident[EI_VERSION] = EV_CURRENT;
 
@@ -51,19 +51,21 @@ static void fill_elf_header(Elf32_Ehdr *elf_header, size_t code_offset, size_t s
 	elf_header->e_machine = EM_RISCV;
 	elf_header->e_version = EV_CURRENT;
 
-	/* Virtual address of code */
+	// Virtual address of code
 	elf_header->e_entry = base_vaddr + code_offset;
 	// elf_header->e_flags = EF_RISCV_RVC;
 	elf_header->e_flags = 0;
 	elf_header->e_ehsize = sizeof(Elf32_Ehdr);
 
-	/* Program header starts after ELF header */
+	// Program header starts after ELF header
 	elf_header->e_phoff = sizeof(Elf32_Ehdr);
 	elf_header->e_phentsize = sizeof(Elf32_Phdr);
 	elf_header->e_phnum = 1;
 
-	/* Section header table (minimal null section) */
-	/* without we cannot test it using spike-isa-sim */
+	/*
+	 * Section header table (minimal null section)
+	 * without we cannot test it using spike-isa-sim
+	 * */
 	elf_header->e_shoff = shoff;
 	elf_header->e_shentsize = sizeof(Elf32_Shdr);
 	elf_header->e_shnum = shnum;
@@ -75,17 +77,17 @@ static void fill_program_header(Elf32_Phdr *program_header, size_t file_size, ui
 
 	program_header->p_type = PT_LOAD;
 
-	/* Load entire file */
+	// Load entire file
 	program_header->p_offset = 0;
 
-	/* Virtual memory base */
+	// Virtual memory base
 	program_header->p_vaddr = base_vaddr;
 	program_header->p_paddr = base_vaddr;
 
 	program_header->p_filesz = file_size;
 	program_header->p_memsz = file_size;
 
-	/* Read + Write + Execute */
+	// Read + Write + Execute
 	program_header->p_flags = PF_R | PF_W | PF_X;
 
 	program_header->p_align = 0x1000;
@@ -135,7 +137,7 @@ assembler_error writer32(const char *filename, uint8_t *code, size_t code_len, u
 		return ASSEMBLER_ELF_ERROR;
 	}
 
-	/* Write elf file */
+	// Write elf file
 	fwrite(&elf_header, sizeof(elf_header), 1, fp);
 	fwrite(&program_header, sizeof(program_header), 1, fp);
 	fwrite(code, code_len, 1, fp);
