@@ -106,6 +106,27 @@ static assembler_error expand_li_instr(char *rd, int64_t imm64, char *line, size
 	}
 	return ASSEMBLER_OK;
 }
+
+static assembler_error expand_la_instr(char *rd, int64_t imm64, char *line, size_t len,
+									   pseudo_expansion *out_expansion) {
+	int32_t imm32 = (int32_t)imm64;
+	int32_t lo = (imm32 << 20) >> 20;
+	int32_t hi_20 = (imm32 - lo) >> 12;
+
+	const instruction *auipc = find_instruction("auipc", strlen("auipc"));
+	if (!auipc) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "auipc %s, %d", rd, hi_20);
+
+	assembler_error err = pseudo_expansion_add(out_expansion, auipc, line);
+	if (err != ASSEMBLER_OK) {
+		return err;
+	}
+
+	return ASSEMBLER_OK;
+}
+
 static assembler_error expand_mv_instr(char *rs1, char *rd, char *line, size_t len, pseudo_expansion *out_expansion) {
 	// mv is implemented with 'addi rs, r1, 0'
 	const instruction *addi = find_instruction("addi", strlen("addi"));
@@ -193,6 +214,17 @@ static assembler_error expand_pseudo_instr(const instruction *instr, const char 
 		CHECK_IMMEDIATE(imm64, INT32_MIN, INT32_MAX, lineBuf);
 
 		return expand_li_instr(rd, imm64, line, LINE_BUF_LEN, out_expansion);
+	}
+
+	if (strcmp(instr->name, "la") == 0) {
+		if (sscanf(lineBuf, "%*s %4[^,], %li", rd, &imm64) != 2) {
+			log_msg(LOG_ERROR, "Failed to parse la: %s", lineBuf);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+
+		CHECK_IMMEDIATE(imm64, INT32_MIN, INT32_MAX, lineBuf);
+
+		return expand_la_instr(rd, imm64, line, LINE_BUF_LEN, out_expansion);
 	}
 
 	if (strcmp(instr->name, "mv") == 0) {
