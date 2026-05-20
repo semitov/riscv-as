@@ -641,10 +641,163 @@ static assembler_error encode_pseudo_instr(pseudo_expansion expansion, int32_t *
 	return err;
 }
 
-static assembler_error process_segment_data(segment *ctx, char *line) {
-	log_msg(LOG_DEBUG, "%s", ".data segment");
+static assembler_error handle_data_integer(uint8_t *data, char *directive, char *args, size_t *current_size,
+										   size_t capacity) {
+	size_t step = 0;
+	if (strcmp(directive, ".byte") == 0) {
+		step = 1;
+	} else if (strcmp(directive, ".half") == 0) {
+		step = 2;
+	} else {
+		step = 4;
+	}
+
+	char *token = strtok(args, ",");
+	while (token) {
+		long long val = 0;
+		if (sscanf(token, " %lli", &val) != 1) {
+			log_msg(LOG_ERROR, "Invalid numeric literal: %s", token);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+
+		if (*current_size + step > capacity) {
+			log_msg(LOG_ERROR, "Data segment capacity exceeded (%zu bytes max)", capacity);
+			return ASSEMBLER_ERR;
+		}
+
+		// Write into bytes array
+		memcpy(&data[*current_size], &val, step);
+		*current_size += step;
+		token = strtok(NULL, ",");
+	}
 
 	return ASSEMBLER_OK;
+}
+
+static assembler_error handle_data_string(uint8_t *data, char *args, char *line, size_t *current_size,
+										  size_t capacity) {
+	char *start_quote = strchr(args, '"');
+	char *end_quote = NULL;
+	if (start_quote) {
+		end_quote = strrchr(start_quote + 1, '"');
+	}
+
+	if (!start_quote || !end_quote) {
+		log_msg(LOG_ERROR, "Missing or malformed string literals: %s", line);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	// Parse inside quotes
+	for (char *p = start_quote + 1; p < end_quote; p++) {
+		if (*current_size >= capacity) {
+			log_msg(LOG_ERROR, "%s", "Data segment capacity exceeded during string parsing");
+			return ASSEMBLER_ERR;
+		}
+
+		data[(*current_size)++] = *p;
+	}
+
+	if (*current_size >= capacity) {
+		log_msg(LOG_ERROR, "%s", "Data segment capacity exceeded for string null-terminator");
+		return ASSEMBLER_ERR;
+	}
+	data[(*current_size)++] = '\0';
+
+	return ASSEMBLER_OK;
+}
+
+static assembler_error handle_data_space(uint8_t *data, char *args, size_t *current_size, size_t capacity) {
+	char *count_token = strtok(args, ",");
+	if (!count_token) {
+		log_msg(LOG_ERROR, "%s", "Missing size for .space directive");
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	long long count = 0;
+	if (sscanf(count_token, " %lli", &count) != 1 || count < 0) {
+		log_msg(LOG_ERROR, "Invalid size for .space directive: %s", count_token);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	long long fill = 0;
+	char *fill_token = strtok(NULL, ",");
+	if (fill_token) {
+		if (sscanf(fill_token, " %lli", &fill) != 1 || fill < 0 || fill > UINT8_MAX) {
+			log_msg(LOG_ERROR, "Invalid fill byte for .space directive: %s", fill_token);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+	}
+
+	if ((size_t)count > capacity - *current_size) {
+		log_msg(LOG_ERROR, "Data segment capacity exceeded (%zu bytes max)", capacity);
+		return ASSEMBLER_ERR;
+	}
+
+	memset(&data[*current_size], fill, count);
+	*current_size += count;
+
+	return ASSEMBLER_OK;
+}
+
+static assembler_error process_segment_data(segment *ctx, char *line) {
+	if (!ctx || !line) {
+		return ASSEMBLER_NULL_ERROR;
+	}
+
+	char *p = line;
+	while (*p && isspace((unsigned char)*p)) {
+		p++;
+	}
+
+	// Get the label if it exists (256 chars)
+	char first_token[LINE_BUF_LEN] = {0};
+	if (sscanf(p, "%255s", first_token) == 1) {
+		size_t len = strlen(first_token);
+		if (len > 0 && first_token[len - 1] == ':') {
+			// Label found
+			p += len;
+			while (*p && isspace((unsigned char)*p)) {
+				p++;
+			}
+		}
+	}
+
+	// Parse the directive
+	char directive[NAME_LEN] = {0};
+	if (sscanf(p, "%63s", directive) != 1) {
+		log_msg(LOG_ERROR, "Failed to parse data directive: %s", p);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	// Get directive's arguments
+	char *args = p + strcspn(p, " \t");
+	while (*args && isspace((unsigned char)*args)) {
+		args++;
+	}
+
+	size_t current_size = ctx[SEGMENT_DATA].size;
+	size_t capacity = ctx[SEGMENT_DATA].capacity;
+	uint8_t *data = ctx[SEGMENT_DATA].data;
+	assembler_error err = ASSEMBLER_OK;
+
+	// Handle data types
+	if (strcmp(directive, ".byte") == 0 || strcmp(directive, ".half") == 0 || strcmp(directive, ".word") == 0) {
+		err = handle_data_integer(data, directive, args, &current_size, capacity);
+	} else if (strcmp(directive, ".string") == 0 || strcmp(directive, ".asciz") == 0 ||
+			   strcmp(directive, ".asciiz") == 0) {
+		err = handle_data_string(data, args, line, &current_size, capacity);
+	} else if (strcmp(directive, ".space") == 0) {
+		err = handle_data_space(data, args, &current_size, capacity);
+	} else {
+		log_msg(LOG_ERROR, "Unknown or unsupported data directive: %s", directive);
+		return ASSEMBLER_UNKNOWN_PSEUDO;
+	}
+
+	if (err == ASSEMBLER_OK) {
+		ctx[SEGMENT_DATA].size = current_size;
+	}
+
+	return err;
 }
 
 static assembler_error process_segment_text(segment *ctx, char *line) {
@@ -652,7 +805,7 @@ static assembler_error process_segment_text(segment *ctx, char *line) {
 	char name[NAME_LEN] = {0};
 	const instruction *instr = NULL;
 
-	size_t counter = 0;
+	size_t counter = ctx[SEGMENT_TEXT].size;
 	int32_t encoded[2] = {0};
 
 	if (sscanf(line, " %63s ", name) != 1) {
@@ -704,8 +857,8 @@ static assembler_error process_segment_text(segment *ctx, char *line) {
 
 	for (size_t i = 0; i < total_bytes; ++i) {
 		if (current_size >= ctx[SEGMENT_TEXT].capacity) {
-			err = ASSEMBLER_ERR;
-			break;
+			log_msg(LOG_ERROR, "Text segment capacity exceeded (%zu bytes max)", ctx[SEGMENT_TEXT].capacity);
+			return ASSEMBLER_ERR;
 		}
 
 		ctx[SEGMENT_TEXT].data[current_size++] = ep[i];
@@ -716,29 +869,34 @@ static assembler_error process_segment_text(segment *ctx, char *line) {
 }
 
 static assembler_error process_segment_bss(segment *ctx, char *line) {
+	(void)ctx;
+	(void)line;
+
+	// @TODO: write function body
 
 	return ASSEMBLER_OK;
 }
 
-static assembler_error process_assembly_line(segment *ctx, char *segment, char *line) {
-	if (!segment) {
-		// If segment is null then just process as text segment
-		process_segment_text(ctx, line);
-	}
-
-	if (strcmp(segment, "data") == 0) {
-		return process_segment_data(ctx, line);
-	}
-
-	if (strcmp(segment, "text") == 0) {
+static assembler_error process_assembly_line(segment *ctx, char *segment_name, char *line) {
+	if (!segment_name || segment_name[0] == '\0') {
+		// Process text segment if the segment is not provided
 		return process_segment_text(ctx, line);
 	}
 
-	if (strcmp(segment, "bss") == 0) {
+	if (strcmp(segment_name, "data") == 0) {
+		return process_segment_data(ctx, line);
+	}
+
+	if (strcmp(segment_name, "text") == 0) {
+		return process_segment_text(ctx, line);
+	}
+
+	if (strcmp(segment_name, "bss") == 0) {
 		return process_segment_bss(ctx, line);
 	}
 
-	return ASSEMBLER_OK;
+	log_msg(LOG_ERROR, "Unknown segment name: %s", segment_name);
+	return ASSEMBLER_ERR;
 }
 
 assembler_error assemble_file(const char *filename, segment *assembler_ctx) {

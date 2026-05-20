@@ -18,6 +18,7 @@
 #define ASSEMBLER_WRITER_H
 
 #include "error.h"
+#include "instruction.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,9 +27,9 @@
  * @brief Produces an ELF (32 bits)
  *
  * @param filename Output file.
- * @param code Bytes array.
- * @param code_len Array length.
+ * @param assembler_ctx Assembler's context.
+ * @param base_vaddr Virtual memory address base.
  */
-assembler_error writer32(const char *filename, uint8_t *code, size_t code_len, uint32_t base_vaddr);
+assembler_error writer32(const char *filename, segment *assembler_ctx, uint32_t base_vaddr);
 
 #endif

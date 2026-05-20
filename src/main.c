@@ -18,7 +18,6 @@
 #include "debug.h"
 #include "error.h"
 #include "instruction.h"
-#include "utils.h"
 #include "writer.h"
 
 #include <stdint.h>
@@ -55,16 +54,6 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	// log some infos
-	log_msg(LOG_DEBUG, "data: %ld/%ld", assembler_ctx[SEGMENT_DATA].size, assembler_ctx[SEGMENT_DATA].capacity);
-	print_code(assembler_ctx[SEGMENT_DATA].data, assembler_ctx[SEGMENT_DATA].size);
-
-	log_msg(LOG_DEBUG, "text: %ld/%ld", assembler_ctx[SEGMENT_TEXT].size, assembler_ctx[SEGMENT_TEXT].capacity);
-	print_code(assembler_ctx[SEGMENT_TEXT].data, assembler_ctx[SEGMENT_TEXT].size);
-
-	log_msg(LOG_DEBUG, "bss: %ld/%ld", assembler_ctx[SEGMENT_BSS].size, assembler_ctx[SEGMENT_BSS].capacity);
-	print_code(assembler_ctx[SEGMENT_BSS].data, assembler_ctx[SEGMENT_BSS].size);
-
 	if (assembler_ctx[SEGMENT_TEXT].size) {
 		char *filename = NULL;
 
@@ -74,9 +63,7 @@ int main(int argc, char **argv) {
 			filename = "a.out";
 		}
 
-		// This is not the final function call
-		assembler_error err = writer32(filename, assembler_ctx[SEGMENT_TEXT].data, assembler_ctx[SEGMENT_TEXT].size,
-									   arguments->base_vaddr);
+		assembler_error err = writer32(filename, assembler_ctx, arguments->base_vaddr);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "writer32() failed: %s", assembler_error_str(err));
 			goto cleanup;

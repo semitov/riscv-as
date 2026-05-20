@@ -16,12 +16,23 @@
 
 #include "writer.h"
 #include "error.h"
+#include "instruction.h"
 
 #include <elf.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+// String offset inside shstrtab
+#define STR_OFF_NULL 0
+#define STR_OFF_TEXT 1
+#define STR_OFF_DATA 7
+#define STR_OFF_BSS 13
+#define STR_OFF_SHSTRTAB 18
+
+// Section header indexes
+enum { SH_IDX_NULL = 0, SH_IDX_TEXT, SH_IDX_DATA, SH_IDX_BSS, SH_IDX_SHSTRTAB, SH_NUM_SECTIONS };
 
 static void fill_ident32(unsigned char *ident) {
 	memset(ident, 0, EI_NIDENT);
@@ -30,122 +41,119 @@ static void fill_ident32(unsigned char *ident) {
 	ident[EI_MAG1] = ELFMAG1;
 	ident[EI_MAG2] = ELFMAG2;
 	ident[EI_MAG3] = ELFMAG3;
-
-	// 32 bits elf
+	// 32-bits
 	ident[EI_CLASS] = ELFCLASS32;
 	// Little-endian
 	ident[EI_DATA] = ELFDATA2LSB;
 	ident[EI_VERSION] = EV_CURRENT;
-
 	ident[EI_OSABI] = ELFOSABI_NONE;
 	ident[EI_ABIVERSION] = 0;
 }
 
-static void fill_elf_header(Elf32_Ehdr *elf_header, size_t code_offset, size_t shoff, size_t shnum, size_t shstrndx,
-							uint32_t base_vaddr) {
-	memset(elf_header, 0, sizeof(*elf_header));
+static void fill_elf_header(Elf32_Ehdr *ehdr, uint32_t entry_point, uint32_t shoff) {
+	memset(ehdr, 0, sizeof(Elf32_Ehdr));
+	fill_ident32(ehdr->e_ident);
 
-	fill_ident32(elf_header->e_ident);
-
-	elf_header->e_type = ET_EXEC;
-	elf_header->e_machine = EM_RISCV;
-	elf_header->e_version = EV_CURRENT;
-
-	// Virtual address of code
-	elf_header->e_entry = base_vaddr + code_offset;
-	// elf_header->e_flags = EF_RISCV_RVC;
-	elf_header->e_flags = 0;
-	elf_header->e_ehsize = sizeof(Elf32_Ehdr);
-
-	// Program header starts after ELF header
-	elf_header->e_phoff = sizeof(Elf32_Ehdr);
-	elf_header->e_phentsize = sizeof(Elf32_Phdr);
-	elf_header->e_phnum = 1;
-
-	/*
-	 * Section header table (minimal null section)
-	 * without we cannot test it using spike-isa-sim
-	 * */
-	elf_header->e_shoff = shoff;
-	elf_header->e_shentsize = sizeof(Elf32_Shdr);
-	elf_header->e_shnum = shnum;
-	elf_header->e_shstrndx = shstrndx;
+	ehdr->e_type = ET_EXEC;
+	ehdr->e_machine = EM_RISCV;
+	ehdr->e_version = EV_CURRENT;
+	ehdr->e_entry = entry_point;
+	ehdr->e_flags = 0;
+	ehdr->e_ehsize = sizeof(Elf32_Ehdr);
+	ehdr->e_phoff = sizeof(Elf32_Ehdr);
+	ehdr->e_phentsize = sizeof(Elf32_Phdr);
+	// One load section
+	ehdr->e_phnum = 1;
+	ehdr->e_shoff = shoff;
+	ehdr->e_shentsize = sizeof(Elf32_Shdr);
+	ehdr->e_shnum = SH_NUM_SECTIONS;
+	ehdr->e_shstrndx = SH_IDX_SHSTRTAB;
 }
 
-static void fill_program_header(Elf32_Phdr *program_header, size_t file_size, uint32_t base_vaddr) {
-	memset(program_header, 0, sizeof(*program_header));
-
-	program_header->p_type = PT_LOAD;
-
-	// Load entire file
-	program_header->p_offset = 0;
-
-	// Virtual memory base
-	program_header->p_vaddr = base_vaddr;
-	program_header->p_paddr = base_vaddr;
-
-	program_header->p_filesz = file_size;
-	program_header->p_memsz = file_size;
-
-	// Read + Write + Execute
-	program_header->p_flags = PF_R | PF_W | PF_X;
-
-	program_header->p_align = 0x1000;
+static void fill_program_header(Elf32_Phdr *phdr, uint32_t base_vaddr, uint32_t filesz, uint32_t memsz) {
+	memset(phdr, 0, sizeof(Elf32_Phdr));
+	phdr->p_type = PT_LOAD;
+	phdr->p_offset = 0;
+	phdr->p_vaddr = base_vaddr;
+	phdr->p_paddr = base_vaddr;
+	phdr->p_filesz = filesz;
+	phdr->p_memsz = memsz;
+	phdr->p_flags = PF_R | PF_W | PF_X;
+	// 4KB
+	phdr->p_align = 0x1000;
 }
 
-static void fill_section_header(Elf32_Shdr *section_header) {
-	memset(section_header, 0, sizeof(*section_header));
+static void fill_section_header(Elf32_Shdr *shdr, uint32_t name_offset, uint32_t type, uint32_t flags, uint32_t addr,
+								uint32_t offset, uint32_t size, uint32_t align) {
+	memset(shdr, 0, sizeof(Elf32_Shdr));
+	shdr->sh_name = name_offset;
+	shdr->sh_type = type;
+	shdr->sh_flags = flags;
+	shdr->sh_addr = addr;
+	shdr->sh_offset = offset;
+	shdr->sh_size = size;
+	shdr->sh_addralign = align;
 }
 
-static void fill_shstrtab_section_header(Elf32_Shdr *section_header, size_t offset, size_t size) {
-	memset(section_header, 0, sizeof(*section_header));
+assembler_error writer32(const char *filename, segment *segments, uint32_t base_vaddr) {
+	if (!filename || !segments) {
+		return ASSEMBLER_NULL_ERROR;
+	}
 
-	section_header->sh_name = 0;
-	section_header->sh_type = SHT_STRTAB;
-	section_header->sh_offset = offset;
-	section_header->sh_size = size;
-	section_header->sh_addralign = 1;
-}
-
-assembler_error writer32(const char *filename, uint8_t *code, size_t code_len, uint32_t base_vaddr) {
-	static const char shstrtab[] = "\0";
-
-	const size_t code_offset = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);
-	const size_t code_end = code_offset + code_len;
-	const size_t shstrtab_offset = code_end;
+	static const char shstrtab[] = "\0.text\0.data\0.bss\0.shstrtab";
 	const size_t shstrtab_size = sizeof(shstrtab);
-	const size_t shoff = shstrtab_offset + shstrtab_size;
-	const size_t shnum = 2;
-	const size_t shstrndx = 1;
 
-	// const size_t file_size = shoff + (sizeof(Elf32_Shdr) * shnum);
-	// log_msg(LOG_DEBUG, "File size: %ld", file_size);
+	const size_t text_len = segments[SEGMENT_TEXT].size;
+	const size_t data_len = segments[SEGMENT_DATA].size;
+	const size_t bss_len = segments[SEGMENT_BSS].size;
+
+	const size_t text_offset = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);
+	const size_t data_offset = text_offset + text_len;
+	const size_t shstrtab_offset = data_offset + data_len;
+	const size_t shoff = shstrtab_offset + shstrtab_size;
 
 	Elf32_Ehdr elf_header;
 	Elf32_Phdr program_header;
-	Elf32_Shdr section_header;
-	Elf32_Shdr shstrtab_section_header;
+	Elf32_Shdr section_headers[SH_NUM_SECTIONS];
 
-	fill_elf_header(&elf_header, code_offset, shoff, shnum, shstrndx, base_vaddr);
-	fill_program_header(&program_header, code_end, base_vaddr);
+	fill_elf_header(&elf_header, base_vaddr + text_offset, shoff);
+	fill_program_header(&program_header, base_vaddr, shstrtab_offset, shstrtab_offset + bss_len);
 
-	fill_section_header(&section_header);
-	fill_shstrtab_section_header(&shstrtab_section_header, shstrtab_offset, shstrtab_size);
+	memset(&section_headers[SH_IDX_NULL], 0, sizeof(Elf32_Shdr));
+
+	fill_section_header(&section_headers[SH_IDX_TEXT], STR_OFF_TEXT, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR,
+						base_vaddr + text_offset, text_offset, text_len, 4);
+
+	fill_section_header(&section_headers[SH_IDX_DATA], STR_OFF_DATA, SHT_PROGBITS, SHF_ALLOC | SHF_WRITE,
+						base_vaddr + data_offset, data_offset, data_len, 4);
+
+	fill_section_header(&section_headers[SH_IDX_BSS], STR_OFF_BSS, SHT_NOBITS, SHF_ALLOC | SHF_WRITE,
+						base_vaddr + shstrtab_offset, shstrtab_offset, bss_len, 4);
+
+	fill_section_header(&section_headers[SH_IDX_SHSTRTAB], STR_OFF_SHSTRTAB, SHT_STRTAB, 0, 0, shstrtab_offset,
+						shstrtab_size, 1);
 
 	FILE *fp = fopen(filename, "wb");
 	if (!fp) {
 		return ASSEMBLER_ELF_ERROR;
 	}
 
-	// Write elf file
-	fwrite(&elf_header, sizeof(elf_header), 1, fp);
-	fwrite(&program_header, sizeof(program_header), 1, fp);
-	fwrite(code, code_len, 1, fp);
-	fwrite(shstrtab, sizeof(shstrtab), 1, fp);
-	fwrite(&section_header, sizeof(section_header), 1, fp);
-	fwrite(&shstrtab_section_header, sizeof(shstrtab_section_header), 1, fp);
+	// @TODO: improve error handling
+
+	fwrite(&elf_header, sizeof(Elf32_Ehdr), 1, fp);
+	fwrite(&program_header, sizeof(Elf32_Phdr), 1, fp);
+
+	if (text_len > 0) {
+		fwrite(segments[SEGMENT_TEXT].data, text_len, 1, fp);
+	}
+
+	if (data_len > 0) {
+		fwrite(segments[SEGMENT_TEXT].data, text_len, 1, fp);
+	}
+
+	fwrite(shstrtab, shstrtab_size, 1, fp);
+	fwrite(section_headers, sizeof(Elf32_Shdr), SH_NUM_SECTIONS, fp);
 
 	fclose(fp);
-
 	return ASSEMBLER_OK;
 }
