@@ -1,4 +1,4 @@
-# Write "SEMITO-V\n" on stdout
+# Write "SEMITO-V\n" on stdout (using spike and pk)
 
 # reserve stack size
 addi sp, sp, -16
