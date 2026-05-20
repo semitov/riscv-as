@@ -20,6 +20,7 @@ static const message messages[] = {
 	{ASSEMBLER_FILE_ERROR, "Failed to open input file"},
 	{ASSEMBLER_UNKNOWN_INSTRUCTION, "Unknown instruction"},
 	{ASSEMBLER_ELF_ERROR, "Error while producing elf binary"},
+	{ASSEMBLER_NULL_ERROR, "NULL pointer"},
 };
 
 const char *assembler_error_str(assembler_error err) {
