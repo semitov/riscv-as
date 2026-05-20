@@ -18,33 +18,54 @@
 #include "debug.h"
 #include "error.h"
 #include "instruction.h"
+#include "utils.h"
 #include "writer.h"
 
 #include <stdint.h>
 #include <stdlib.h>
 
+void init_segments(segment *segments) {
+	for (size_t i = 0; i < SEGMENTS_NUM; ++i) {
+		segments[i].type = (segment_type)i;
+		segments[i].vaddr = 0;
+		segments[i].capacity = DATA_SIZE;
+		segments[i].size = 0;
+	}
+}
+
 int main(int argc, char **argv) {
 	int exit_code = EXIT_FAILURE;
 	arguments_s *arguments = NULL;
 
+	// Initialize assembler segments
+	segment assembler_ctx[SEGMENTS_NUM];
+	init_segments(assembler_ctx);
+
+	// Parse cli args
 	arguments = argparse(argc, argv);
 	if (!arguments) {
 		return exit_code;
 	}
 
-	uint8_t code[TEXT_SIZE] = {0};
-	size_t code_len = 0;
 	if (arguments->infile) {
-		assembler_error err = assemble_file(arguments->infile, code, &code_len);
+		assembler_error err = assemble_file(arguments->infile, assembler_ctx);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "assemble_file() failed: %s", assembler_error_str(err));
 			goto cleanup;
 		}
-
-		log_msg(LOG_DEBUG, "Code len: %ld", code_len);
 	}
 
-	if (code_len) {
+	// log some infos
+	log_msg(LOG_DEBUG, "data: %ld/%ld", assembler_ctx[SEGMENT_DATA].size, assembler_ctx[SEGMENT_DATA].capacity);
+	print_code(assembler_ctx[SEGMENT_DATA].data, assembler_ctx[SEGMENT_DATA].size);
+
+	log_msg(LOG_DEBUG, "text: %ld/%ld", assembler_ctx[SEGMENT_TEXT].size, assembler_ctx[SEGMENT_TEXT].capacity);
+	print_code(assembler_ctx[SEGMENT_TEXT].data, assembler_ctx[SEGMENT_TEXT].size);
+
+	log_msg(LOG_DEBUG, "bss: %ld/%ld", assembler_ctx[SEGMENT_BSS].size, assembler_ctx[SEGMENT_BSS].capacity);
+	print_code(assembler_ctx[SEGMENT_BSS].data, assembler_ctx[SEGMENT_BSS].size);
+
+	if (assembler_ctx[SEGMENT_TEXT].size) {
 		char *filename = NULL;
 
 		if (arguments->outfile) {
@@ -53,7 +74,9 @@ int main(int argc, char **argv) {
 			filename = "a.out";
 		}
 
-		assembler_error err = writer32(filename, code, code_len, arguments->base_vaddr);
+		// This is not the final function call
+		assembler_error err = writer32(filename, assembler_ctx[SEGMENT_TEXT].data, assembler_ctx[SEGMENT_TEXT].size,
+									   arguments->base_vaddr);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "writer32() failed: %s", assembler_error_str(err));
 			goto cleanup;

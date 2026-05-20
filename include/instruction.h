@@ -22,11 +22,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// We support 3 segments: .data, .text and .bss
 #define REGISTER_LEN 5
 #define NAME_LEN 64
 
+#define SEGMENTS_NUM 3
 #define OPCODE_LEN 4
-#define TEXT_SIZE OPCODE_LEN * 512
+#define DATA_SIZE OPCODE_LEN * 512
 
 #define LINE_BUF_LEN 512
 
@@ -92,14 +94,14 @@
 	(int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)instr->funct3 << 12) | instr->opcode);
 
 typedef enum segment_type {
-	SEGMENT_TEXT,
-	SEGMENT_DATA,
-	SEGMENT_BSS,
+	SEGMENT_DATA = 0,
+	SEGMENT_TEXT = 1,
+	SEGMENT_BSS = 2,
 } segment_type;
 
 typedef struct segment {
 	segment_type type;
-	uint8_t *data;
+	uint8_t data[DATA_SIZE];
 	uint32_t vaddr;
 	size_t size;
 	size_t capacity;
@@ -117,9 +119,8 @@ typedef struct instruction {
  * @brief Assemble the file.
  *
  * @param filename File to assemble.
- * @param[out] code Bytes array.
- * @param[out] code_len Array length.
+ * @param[out] ctx Assembler's ctx.
  */
-assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_len);
+assembler_error assemble_file(const char *filename, segment *assembler_ctx);
 
 #endif

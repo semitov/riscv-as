@@ -28,7 +28,7 @@
  */
 bool is_little_endian(void);
 
-// @TODO: remove this function
+// @TODO: remove this function later
 void print_code(const uint8_t *code, size_t code_len);
 
 /**

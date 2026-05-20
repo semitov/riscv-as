@@ -641,20 +641,19 @@ static assembler_error encode_pseudo_instr(pseudo_expansion expansion, int32_t *
 	return err;
 }
 
-static assembler_error process_segment_data(char *line) {
+static assembler_error process_segment_data(segment *ctx, char *line) {
 	log_msg(LOG_DEBUG, "%s", ".data segment");
 
 	return ASSEMBLER_OK;
 }
 
-static assembler_error process_segment_text(char *line) {
+static assembler_error process_segment_text(segment *ctx, char *line) {
 	assembler_error err = ASSEMBLER_OK;
 	char name[NAME_LEN] = {0};
 	const instruction *instr = NULL;
 
 	size_t counter = 0;
 	int32_t encoded[2] = {0};
-	size_t code_index = 0;
 
 	if (sscanf(line, " %63s ", name) != 1) {
 		log_msg(LOG_ERROR, "Failed to parse instruction name: %s", line);
@@ -698,50 +697,52 @@ static assembler_error process_segment_text(char *line) {
 		instructions_to_copy = 1;
 	}
 
-	// Copy bytes into bytes array
-	// uint8_t *ep = (uint8_t *)encoded;
+	// Copy bytes into text bytes array and update size
+	uint8_t *ep = (uint8_t *)encoded;
 	size_t total_bytes = instructions_to_copy * 4;
+	size_t current_size = ctx[SEGMENT_TEXT].size;
 
 	for (size_t i = 0; i < total_bytes; ++i) {
-		if (code_index >= TEXT_SIZE) {
+		if (current_size >= ctx[SEGMENT_TEXT].capacity) {
 			err = ASSEMBLER_ERR;
 			break;
 		}
 
-		// code[code_index++] = ep[i];
+		ctx[SEGMENT_TEXT].data[current_size++] = ep[i];
 	}
+	ctx[SEGMENT_TEXT].size = current_size;
 
 	return err;
 }
 
-static assembler_error process_segment_bss(char *line) {
+static assembler_error process_segment_bss(segment *ctx, char *line) {
 
 	return ASSEMBLER_OK;
 }
 
-static assembler_error process_assembly_line(char *segment, char *line) {
+static assembler_error process_assembly_line(segment *ctx, char *segment, char *line) {
 	if (!segment) {
 		// If segment is null then just process as text segment
-		process_segment_text(line);
+		process_segment_text(ctx, line);
 	}
 
 	if (strcmp(segment, "data") == 0) {
-		return process_segment_data(line);
+		return process_segment_data(ctx, line);
 	}
 
 	if (strcmp(segment, "text") == 0) {
-		return process_segment_text(line);
+		return process_segment_text(ctx, line);
 	}
 
 	if (strcmp(segment, "bss") == 0) {
-		return process_segment_bss(line);
+		return process_segment_bss(ctx, line);
 	}
 
 	return ASSEMBLER_OK;
 }
 
-assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_len) {
-	if (!filename || !code || !code_len) {
+assembler_error assemble_file(const char *filename, segment *assembler_ctx) {
+	if (!filename || !assembler_ctx) {
 		return ASSEMBLER_NULL_ERROR;
 	}
 
@@ -769,7 +770,7 @@ assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_
 			continue;
 		}
 
-		err = process_assembly_line(segment, line);
+		err = process_assembly_line(assembler_ctx, segment, line);
 		if (err != ASSEMBLER_OK) {
 			break;
 		}
