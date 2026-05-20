@@ -35,10 +35,11 @@ void init_segments(segment *segments) {
 int main(int argc, char **argv) {
 	int exit_code = EXIT_FAILURE;
 	arguments_s *arguments = NULL;
+	assembler_error err = ASSEMBLER_OK;
 
-	// Initialize assembler segments
-	segment assembler_ctx[SEGMENTS_NUM];
-	init_segments(assembler_ctx);
+	// Initialize assembler context
+	assembler_ctx assembler_ctx = {0};
+	init_segments(assembler_ctx.segments);
 
 	// Parse cli args
 	arguments = argparse(argc, argv);
@@ -47,14 +48,22 @@ int main(int argc, char **argv) {
 	}
 
 	if (arguments->infile) {
-		assembler_error err = assemble_file(arguments->infile, assembler_ctx);
+		// First scan to calculate label address
+		err = scan_labels(arguments->infile, &assembler_ctx);
+		if (err != ASSEMBLER_OK) {
+			log_msg(LOG_ERROR, "scan_labels() failed: %s", assembler_error_str(err));
+			goto cleanup;
+		}
+
+		// Assemble file
+		err = assemble_file(arguments->infile, &assembler_ctx);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "assemble_file() failed: %s", assembler_error_str(err));
 			goto cleanup;
 		}
 	}
 
-	if (assembler_ctx[SEGMENT_TEXT].size) {
+	if (assembler_ctx.segments[SEGMENT_TEXT].size) {
 		char *filename = NULL;
 
 		if (arguments->outfile) {
@@ -63,7 +72,7 @@ int main(int argc, char **argv) {
 			filename = "a.out";
 		}
 
-		assembler_error err = writer32(filename, assembler_ctx, arguments->base_vaddr);
+		assembler_error err = writer32(filename, assembler_ctx.segments, arguments->base_vaddr);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "writer32() failed: %s", assembler_error_str(err));
 			goto cleanup;
