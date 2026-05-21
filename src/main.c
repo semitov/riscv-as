@@ -23,28 +23,48 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+void init_segments(segment *segments) {
+	for (size_t i = 0; i < SEGMENTS_NUM; ++i) {
+		segments[i].type = (segment_type)i;
+		segments[i].capacity = DATA_SIZE;
+		segments[i].size = 0;
+	}
+}
+
 int main(int argc, char **argv) {
 	int exit_code = EXIT_FAILURE;
 	arguments_s *arguments = NULL;
+	assembler_error err = ASSEMBLER_OK;
 
+	// Initialize assembler context
+	assembler_ctx assembler_ctx = {0};
+	init_segments(assembler_ctx.segments);
+
+	// Parse cli args
 	arguments = argparse(argc, argv);
 	if (!arguments) {
 		return exit_code;
 	}
 
-	uint8_t code[TEXT_SIZE] = {0};
-	size_t code_len = 0;
+	assembler_ctx.base_vaddr = arguments->base_vaddr;
+
 	if (arguments->infile) {
-		assembler_error err = assemble_file(arguments->infile, code, &code_len);
+		// First scan to calculate label address
+		err = scan_labels(arguments->infile, &assembler_ctx);
+		if (err != ASSEMBLER_OK) {
+			log_msg(LOG_ERROR, "scan_labels() failed: %s", assembler_error_str(err));
+			goto cleanup;
+		}
+
+		// Assemble file
+		err = assemble_file(arguments->infile, &assembler_ctx);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "assemble_file() failed: %s", assembler_error_str(err));
 			goto cleanup;
 		}
-
-		log_msg(LOG_DEBUG, "Code len: %ld", code_len);
 	}
 
-	if (code_len) {
+	if (assembler_ctx.segments[SEGMENT_TEXT].size) {
 		char *filename = NULL;
 
 		if (arguments->outfile) {
@@ -53,7 +73,7 @@ int main(int argc, char **argv) {
 			filename = "a.out";
 		}
 
-		assembler_error err = writer32(filename, code, code_len, arguments->base_vaddr);
+		assembler_error err = writer32(filename, &assembler_ctx, arguments->base_vaddr);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "writer32() failed: %s", assembler_error_str(err));
 			goto cleanup;
