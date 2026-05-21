@@ -21,6 +21,7 @@
 #include "hash.h"
 #include "symtable.h"
 #include "utils.h"
+#include "writer.h"
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -211,7 +212,7 @@ static assembler_error expand_snez_instr(char *rs2, char *rd, char *line, size_t
 }
 
 static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction *instr, const char *lineBuf,
-										   pseudo_expansion *out_expansion) {
+										   uint32_t current_pc, pseudo_expansion *out_expansion) {
 	if (!instr || !lineBuf || !out_expansion) {
 		return ASSEMBLER_PARSE_ERROR;
 	}
@@ -235,19 +236,22 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 	}
 
 	if (strcmp(instr->name, "la") == 0) {
-		char symbol[NAME_LEN] = {0};
+		char symbol_name[NAME_LEN] = {0};
 
-		if (sscanf(lineBuf, "%*s %4[^,], %s", rd, symbol) != 2) {
+		if (sscanf(lineBuf, "%*s %4[^,], %s", rd, symbol_name) != 2) {
 			log_msg(LOG_ERROR, "Failed to parse la: %s", lineBuf);
 			return ASSEMBLER_PARSE_ERROR;
 		}
 
-		uint32_t symbol_address = 0;
-		if (!symtable_lookup(&ctx->table, symbol, &symbol_address)) {
+		// @TODO: check type, a label can be a variable in the data segment or an address for jump
+		// right now it works only with variables
+		uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
+		uint32_t symbol_offset;
+		if (!symtable_lookup(&ctx->table, symbol_name, &symbol_offset)) {
 			return ASSEMBLER_SYM_NOT_FOUND;
 		}
 
-		uint32_t current_pc = (uint32_t)ctx->segments[SEGMENT_TEXT].size;
+		uint32_t symbol_address = data_vaddr + symbol_offset;
 
 		return expand_la_instr(rd, symbol_address, current_pc, line, LINE_BUF_LEN, out_expansion);
 	}
@@ -513,7 +517,7 @@ static assembler_error handle_u_type_instr(const instruction *instr, char *rd, u
 		return err;
 	}
 
-	*res = ASSEMBLE_U_TYPE(instr, imm, *rd_val);
+	*res = ASSEMBLE_U_TYPE(instr, *rd_val, imm);
 
 	return err;
 }
@@ -742,7 +746,32 @@ static assembler_error handle_data_string(uint8_t *data, char *args, char *line,
 			return ASSEMBLER_ERR;
 		}
 
-		data[(*current_size)++] = *p;
+		if (*p == '\\' && (p + 1) < end_quote) {
+			p++;
+			switch (*p) {
+				case 'n':
+					data[(*current_size)++] = '\n';
+					break;
+				case 't':
+					data[(*current_size)++] = '\t';
+					break;
+				case 'r':
+					data[(*current_size)++] = '\r';
+					break;
+				case '\\':
+					data[(*current_size)++] = '\\';
+					break;
+				case '\"':
+					data[(*current_size)++] = '\"';
+					break;
+				default:
+					data[(*current_size)++] = '\\';
+					data[(*current_size)++] = *p;
+					break;
+			}
+		} else {
+			data[(*current_size)++] = *p;
+		}
 	}
 
 	if (*current_size >= capacity) {
@@ -803,8 +832,12 @@ static assembler_error parse_data_directive(uint8_t *data, const char *directive
 	}
 }
 
-static assembler_error process_segment_data(assembler_ctx *ctx, char *line) {
+static assembler_error process_segment_data(assembler_ctx *ctx, char *line, size_t *data_offset) {
 	if (!ctx || !line) {
+		return ASSEMBLER_NULL_ERROR;
+	}
+
+	if (!data_offset) {
 		return ASSEMBLER_NULL_ERROR;
 	}
 
@@ -839,25 +872,29 @@ static assembler_error process_segment_data(assembler_ctx *ctx, char *line) {
 		args++;
 	}
 
-	size_t current_size = ctx->segments[SEGMENT_DATA].size;
+	size_t current_size = *data_offset;
 	size_t capacity = ctx->segments[SEGMENT_DATA].capacity;
 	uint8_t *data = ctx->segments[SEGMENT_DATA].data;
 
 	assembler_error err = parse_data_directive(data, directive, args, line, &current_size, capacity);
 
 	if (err == ASSEMBLER_OK) {
-		ctx->segments[SEGMENT_DATA].size = current_size;
+		*data_offset = current_size;
 	}
 
 	return err;
 }
 
-static assembler_error process_segment_text(assembler_ctx *ctx, char *line) {
+static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size_t *text_offset) {
 	assembler_error err = ASSEMBLER_OK;
 	char name[NAME_LEN] = {0};
 	const instruction *instr = NULL;
 
-	size_t counter = ctx->segments[SEGMENT_TEXT].size;
+	if (!ctx || !line || !text_offset) {
+		return ASSEMBLER_NULL_ERROR;
+	}
+
+	size_t counter = *text_offset;
 	int32_t encoded[2] = {0};
 
 	if (sscanf(line, " %63s ", name) != 1) {
@@ -877,7 +914,10 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line) {
 		log_msg(LOG_INFO, "expanding pseudo-instruction: %s", name);
 		pseudo_expansion expansion;
 
-		err = expand_pseudo_instr(ctx, instr, line, &expansion);
+		uint32_t text_vaddr = get_text_vaddr(ctx->base_vaddr);
+		uint32_t current_pc = text_vaddr + *text_offset;
+
+		err = expand_pseudo_instr(ctx, instr, line, current_pc, &expansion);
 		if (err != ASSEMBLER_OK) {
 			return err;
 		}
@@ -904,7 +944,7 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line) {
 	// Copy bytes into text bytes array and update size
 	uint8_t *ep = (uint8_t *)encoded;
 	size_t total_bytes = instructions_to_copy * 4;
-	size_t current_size = ctx->segments[SEGMENT_TEXT].size;
+	size_t current_size = *text_offset;
 
 	for (size_t i = 0; i < total_bytes; ++i) {
 		if (current_size >= ctx->segments[SEGMENT_TEXT].capacity) {
@@ -914,7 +954,7 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line) {
 
 		ctx->segments[SEGMENT_TEXT].data[current_size++] = ep[i];
 	}
-	ctx->segments[SEGMENT_TEXT].size = current_size;
+	*text_offset = current_size;
 
 	return err;
 }
@@ -928,14 +968,15 @@ static assembler_error process_segment_bss(assembler_ctx *ctx, char *line) {
 	return ASSEMBLER_OK;
 }
 
-static assembler_error process_assembly_line(assembler_ctx *ctx, char *segment_name, char *line) {
+static assembler_error process_assembly_line(assembler_ctx *ctx, char *segment_name, char *line, size_t *text_offset,
+											 size_t *data_offset) {
 	if (!segment_name || segment_name[0] == '\0' || strcmp(segment_name, "text") == 0) {
 		// Process text segment if the segment is not provided
-		return process_segment_text(ctx, line);
+		return process_segment_text(ctx, line, text_offset);
 	}
 
 	if (strcmp(segment_name, "data") == 0) {
-		return process_segment_data(ctx, line);
+		return process_segment_data(ctx, line, data_offset);
 	}
 
 	if (strcmp(segment_name, "bss") == 0) {
@@ -954,6 +995,8 @@ assembler_error assemble_file(const char *filename, assembler_ctx *ctx) {
 	assembler_error err = ASSEMBLER_OK;
 	char line_buffer[LINE_BUF_LEN] = {0};
 	char segment[LINE_BUF_LEN] = {0};
+	size_t text_offset = 0;
+	size_t data_offset = 0;
 
 	FILE *fp = fopen(filename, "r");
 	if (!fp) {
@@ -974,11 +1017,14 @@ assembler_error assemble_file(const char *filename, assembler_ctx *ctx) {
 			continue;
 		}
 
-		err = process_assembly_line(ctx, segment, line);
+		err = process_assembly_line(ctx, segment, line, &text_offset, &data_offset);
 		if (err != ASSEMBLER_OK) {
 			break;
 		}
 	}
+
+	ctx->segments[SEGMENT_TEXT].size = text_offset;
+	ctx->segments[SEGMENT_DATA].size = data_offset;
 
 	fclose(fp);
 
@@ -1049,6 +1095,9 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 					return ASSEMBLER_ERR;
 				}
 
+				ctx->table.symbols[ctx->table.count - 1].type =
+					(segment[0] == '\0' || strcmp(segment, "text") == 0) ? SYM_SEGMENT_TEXT : SYM_SEGMENT_DATA;
+
 				// Advance
 				p += len;
 				while (*p && isspace((unsigned char)*p)) {
@@ -1078,7 +1127,10 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 
 			if (instr->type == 'P') {
 				pseudo_expansion expansion;
-				assembler_error err = expand_pseudo_instr(ctx, instr, p, &expansion);
+				uint32_t text_vaddr = get_text_vaddr(ctx->base_vaddr);
+				uint32_t current_pc = text_vaddr + text_offset;
+
+				assembler_error err = expand_pseudo_instr(ctx, instr, p, current_pc, &expansion);
 				if (err != ASSEMBLER_OK) {
 					fclose(fp);
 					return err;
@@ -1120,6 +1172,9 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 			return ASSEMBLER_ERR;
 		}
 	}
+
+	ctx->segments[SEGMENT_TEXT].size = text_offset;
+	ctx->segments[SEGMENT_DATA].size = data_offset;
 
 	fclose(fp);
 

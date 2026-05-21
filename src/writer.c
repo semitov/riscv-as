@@ -177,5 +177,5 @@ uint32_t get_text_vaddr(uint32_t base_vaddr) {
 }
 
 uint32_t get_data_vaddr(assembler_ctx *ctx, uint32_t base_vaddr) {
-	return get_text_vaddr(base_vaddr) + ctx->segments[SEGMENT_TEXT].size;
+	return (get_text_vaddr(base_vaddr) + ctx->segments[SEGMENT_TEXT].size);
 }

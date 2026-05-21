@@ -26,7 +26,6 @@
 void init_segments(segment *segments) {
 	for (size_t i = 0; i < SEGMENTS_NUM; ++i) {
 		segments[i].type = (segment_type)i;
-		segments[i].vaddr = 0;
 		segments[i].capacity = DATA_SIZE;
 		segments[i].size = 0;
 	}
@@ -46,6 +45,8 @@ int main(int argc, char **argv) {
 	if (!arguments) {
 		return exit_code;
 	}
+
+	assembler_ctx.base_vaddr = arguments->base_vaddr;
 
 	if (arguments->infile) {
 		// First scan to calculate label address
@@ -72,7 +73,7 @@ int main(int argc, char **argv) {
 			filename = "a.out";
 		}
 
-		assembler_error err = writer32(filename, assembler_ctx.segments, arguments->base_vaddr);
+		assembler_error err = writer32(filename, &assembler_ctx, arguments->base_vaddr);
 		if (err != ASSEMBLER_OK) {
 			log_msg(LOG_ERROR, "writer32() failed: %s", assembler_error_str(err));
 			goto cleanup;
