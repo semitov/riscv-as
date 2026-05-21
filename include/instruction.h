@@ -103,7 +103,6 @@ typedef enum segment_type {
 typedef struct segment {
 	segment_type type;
 	uint8_t data[DATA_SIZE];
-	uint32_t vaddr;
 	size_t size;
 	size_t capacity;
 } segment;
@@ -119,6 +118,7 @@ typedef struct instruction {
 typedef struct assembler_ctx {
 	segment segments[SEGMENTS_NUM];
 	symtable table;
+	uint32_t base_vaddr;
 } assembler_ctx;
 
 /**

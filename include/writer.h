@@ -30,6 +30,16 @@
  * @param assembler_ctx Assembler's context.
  * @param base_vaddr Virtual memory address base.
  */
-assembler_error writer32(const char *filename, segment *assembler_ctx, uint32_t base_vaddr);
+assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base_vaddr);
+
+/**
+ * @brief Retrieves .text virtual address.
+ */
+uint32_t get_text_vaddr(uint32_t base_vaddr);
+
+/**
+ * @brief Retrieves .data virtual address.
+ */
+uint32_t get_data_vaddr(assembler_ctx *ctx, uint32_t base_vaddr);
 
 #endif

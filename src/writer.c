@@ -31,6 +31,9 @@
 #define STR_OFF_BSS 13
 #define STR_OFF_SHSTRTAB 18
 
+// Page align (4KB)
+#define PAGE_ALIGN 0x1000
+
 // Section header indexes
 enum { SH_IDX_NULL = 0, SH_IDX_TEXT, SH_IDX_DATA, SH_IDX_BSS, SH_IDX_SHSTRTAB, SH_NUM_SECTIONS };
 
@@ -79,8 +82,7 @@ static void fill_program_header(Elf32_Phdr *phdr, uint32_t base_vaddr, uint32_t 
 	phdr->p_filesz = filesz;
 	phdr->p_memsz = memsz;
 	phdr->p_flags = PF_R | PF_W | PF_X;
-	// 4KB
-	phdr->p_align = 0x1000;
+	phdr->p_align = PAGE_ALIGN;
 }
 
 static void fill_section_header(Elf32_Shdr *shdr, uint32_t name_offset, uint32_t type, uint32_t flags, uint32_t addr,
@@ -95,10 +97,12 @@ static void fill_section_header(Elf32_Shdr *shdr, uint32_t name_offset, uint32_t
 	shdr->sh_addralign = align;
 }
 
-assembler_error writer32(const char *filename, segment *segments, uint32_t base_vaddr) {
-	if (!filename || !segments) {
+assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base_vaddr) {
+	if (!filename || !ctx) {
 		return ASSEMBLER_NULL_ERROR;
 	}
+
+	segment *segments = ctx->segments;
 
 	static const char shstrtab[] = "\0.text\0.data\0.bss\0.shstrtab";
 	const size_t shstrtab_size = sizeof(shstrtab);
@@ -122,13 +126,13 @@ assembler_error writer32(const char *filename, segment *segments, uint32_t base_
 	memset(&section_headers[SH_IDX_NULL], 0, sizeof(Elf32_Shdr));
 
 	fill_section_header(&section_headers[SH_IDX_TEXT], STR_OFF_TEXT, SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR,
-						base_vaddr + text_offset, text_offset, text_len, 4);
+						base_vaddr + text_offset, text_offset, text_len, PAGE_ALIGN);
 
 	fill_section_header(&section_headers[SH_IDX_DATA], STR_OFF_DATA, SHT_PROGBITS, SHF_ALLOC | SHF_WRITE,
-						base_vaddr + data_offset, data_offset, data_len, 4);
+						base_vaddr + data_offset, data_offset, data_len, PAGE_ALIGN);
 
 	fill_section_header(&section_headers[SH_IDX_BSS], STR_OFF_BSS, SHT_NOBITS, SHF_ALLOC | SHF_WRITE,
-						base_vaddr + shstrtab_offset, shstrtab_offset, bss_len, 4);
+						base_vaddr + shstrtab_offset, shstrtab_offset, bss_len, PAGE_ALIGN);
 
 	fill_section_header(&section_headers[SH_IDX_SHSTRTAB], STR_OFF_SHSTRTAB, SHT_STRTAB, 0, 0, shstrtab_offset,
 						shstrtab_size, 1);
@@ -166,4 +170,12 @@ assembler_error writer32(const char *filename, segment *segments, uint32_t base_
 
 	fclose(fp);
 	return ASSEMBLER_OK;
+}
+
+uint32_t get_text_vaddr(uint32_t base_vaddr) {
+	return (base_vaddr + sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr));
+}
+
+uint32_t get_data_vaddr(assembler_ctx *ctx, uint32_t base_vaddr) {
+	return get_text_vaddr(base_vaddr) + ctx->segments[SEGMENT_TEXT].size;
 }
