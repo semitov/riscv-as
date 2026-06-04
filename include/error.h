@@ -16,6 +16,8 @@ typedef enum assembler_error {
 	ASSEMBLER_FILE_ERROR,
 	ASSEMBLER_UNKNOWN_INSTRUCTION,
 	ASSEMBLER_ELF_ERROR,
+	ASSEMBLER_NULL_ERROR,
+	ASSEMBLER_SYM_NOT_FOUND,
 } assembler_error;
 
 const char *assembler_error_str(assembler_error err);

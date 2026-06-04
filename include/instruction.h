@@ -18,15 +18,18 @@
 #define ASSEMBLER_INSTRUCTION_H
 
 #include "error.h"
+#include "symtable.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
+// We support 3 segments: .data, .text and .bss
 #define REGISTER_LEN 5
 #define NAME_LEN 64
 
+#define SEGMENTS_NUM 3
 #define OPCODE_LEN 4
-#define TEXT_SIZE OPCODE_LEN * 512
+#define DATA_SIZE OPCODE_LEN * 512
 
 #define LINE_BUF_LEN 512
 
@@ -36,31 +39,25 @@
 #define INT13_MAX ((1 << 12) - 1)
 #define INT13_MIN (-(1 << 12))
 
+#define INT20_MAX ((1 << 20) - 1)
+#define INT20_MIN (-(1 << 19))
+
 #define INT21_MAX ((1 << 20) - 1)
 #define INT21_MIN (-(1 << 20))
 
-/* Check if immediate is in specified boundaries */
+// Check if immediate is in specified boundaries
 #define CHECK_IMMEDIATE(imm, MIN, MAX, buf)                                                                            \
 	if (imm < MIN || imm > MAX) {                                                                                      \
 		log_msg(LOG_ERROR, "Invalid immediate value: %s", buf);                                                        \
 		return ASSEMBLER_INVALID_IMMEDIATE;                                                                            \
 	}
 
-/* Check if immediate is in specified boundaries and it's last bit */
+// Check if immediate is in specified boundaries and it's last bit
 #define CHECK_IMM_AND_LAST_B(imm, MIN, MAX, buf, instr_type)                                                           \
 	if (imm < MIN || imm > MAX || (imm_long & 0x1) != 0) {                                                             \
 		log_msg(LOG_ERROR, "Invalid %s immediate value: %s", instr_type, lineBuf);                                     \
 		return ASSEMBLER_INVALID_IMMEDIATE;                                                                            \
 	}
-
-/*
- * LUI accepts any values which can be encoded in 20 bits, so we can unify two
- * ranges to determine our MIN and MAX acceptable value:
- * - unsigned: 0 to 1048576 (2^20)
- * - signed: -524288 (-2^19) to 524287 (2^19 - 1)
- */
-#define INT20_MAX ((1 << 20) - 1)
-#define INT20_MIN (-(1 << 19))
 
 #define R_TYPE 'R'
 #define I_TYPE 'I'
@@ -97,6 +94,19 @@
 #define ASSEMBLE_Z_TYPE(instr)                                                                                         \
 	(int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)instr->funct3 << 12) | instr->opcode);
 
+typedef enum segment_type {
+	SEGMENT_DATA = 0,
+	SEGMENT_TEXT = 1,
+	SEGMENT_BSS = 2,
+} segment_type;
+
+typedef struct segment {
+	segment_type type;
+	uint8_t data[DATA_SIZE];
+	size_t size;
+	size_t capacity;
+} segment;
+
 typedef struct instruction {
 	char *name;
 	uint8_t opcode;
@@ -105,13 +115,26 @@ typedef struct instruction {
 	char type;
 } instruction;
 
+typedef struct assembler_ctx {
+	segment segments[SEGMENTS_NUM];
+	symtable table;
+	uint32_t base_vaddr;
+} assembler_ctx;
+
 /**
  * @brief Assemble the file.
  *
  * @param filename File to assemble.
- * @param[out] code Bytes array.
- * @param[out] code_len Array length.
+ * @param[out] ctx Assembler's ctx.
  */
-assembler_error assemble_file(const char *filename, uint8_t *code, size_t *code_len);
+assembler_error assemble_file(const char *filename, assembler_ctx *ctx);
+
+/**
+ * @brief Scans the file to calculate labels addresses.
+ *
+ * @param filename File to scan.
+ * @param ctx Assembler's context.
+ */
+assembler_error scan_labels(const char *filename, assembler_ctx *ctx);
 
 #endif
