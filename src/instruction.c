@@ -30,6 +30,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef PICO_BUILD
+#include "littlefs.h"
+#endif
+
 typedef struct pseudo_expansion {
 	const instruction *instructions[2];
 	char lines[2][LINE_BUF_LEN];

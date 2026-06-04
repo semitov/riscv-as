@@ -8,6 +8,7 @@ project(stv-assembler C CXX ASM)
 
 include_directories(include)
 include_directories(gperf)
+include_directories(../include)
 
 set(HASH_OUTPUT_FILE "${PROJECT_SOURCE_DIR}/gperf/hash.c")
 set_source_files_properties("${HASH_OUTPUT_FILE}" PROPERTIES GENERATED TRUE)
@@ -24,7 +25,9 @@ add_library(stv-assembler
     src/debug.c
     src/instruction.c
     src/writer.c
+    ../src/littlefs.c
     "${HASH_OUTPUT_FILE}"
 )
 add_dependencies(stv-assembler hashMap)
 target_include_directories(stv-assembler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(stv-assembler PRIVATE littlefs-lib pico_stdlib hardware_adc hardware_dma hardware_spi)
