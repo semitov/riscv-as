@@ -23,7 +23,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-
+#ifdef PICO_BUILD
+#include "pico_hal.h"
+#endif
 // String offset inside shstrtab
 #define STR_OFF_NULL 0
 #define STR_OFF_TEXT 1
@@ -154,14 +156,14 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 	/* Write elf file */
 	#ifdef PICO_BUILD
 	if (text_len > 0) {
-		if (pico_write(fp, segments[SEGMENT_TEXT].data, text_len, 1) != 1) {
+		if (pico_write(fp, segments[SEGMENT_TEXT].data, text_len) != 1) {
 			pico_close(fp);
 			return ASSEMBLER_ELF_ERROR;
 		}
 	}
 
 	if (data_len > 0) {
-		if (pico_write(fp, segments[SEGMENT_DATA].data, data_len, 1) != 1) {
+		if (pico_write(fp, segments[SEGMENT_DATA].data, data_len) != 1) {
 			pico_close(fp);
 			return ASSEMBLER_ELF_ERROR;
 		}
