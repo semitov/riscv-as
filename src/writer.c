@@ -153,8 +153,6 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 
 	/* Write elf file */
 	#ifdef PICO_BUILD
-	pico_write(fp, code, code_len);
-
 	if (text_len > 0) {
 		if (pico_write(fp, segments[SEGMENT_TEXT].data, text_len, 1) != 1) {
 			pico_close(fp);
@@ -172,13 +170,6 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 	pico_close(fp);
 	pico_unmount();
 	#else
-	fwrite(&elf_header, sizeof(elf_header), 1, fp);
-	fwrite(&program_header, sizeof(program_header), 1, fp);
-	fwrite(code, code_len, 1, fp);
-	fwrite(shstrtab, sizeof(shstrtab), 1, fp);
-	fwrite(&section_header, sizeof(section_header), 1, fp);
-	fwrite(&shstrtab_section_header, sizeof(shstrtab_section_header), 1, fp);
-
 	if (fwrite(&elf_header, sizeof(Elf32_Ehdr), 1, fp) != 1 ||
 		fwrite(&program_header, sizeof(Elf32_Phdr), 1, fp) != 1) {
 		fclose(fp);
@@ -198,9 +189,6 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 			return ASSEMBLER_ELF_ERROR;
 		}
 	}
-	fclose(fp);
-	#endif
-
 
 	if (fwrite(shstrtab, shstrtab_size, 1, fp) != 1 ||
 		fwrite(section_headers, sizeof(Elf32_Shdr), SH_NUM_SECTIONS, fp) != SH_NUM_SECTIONS) {
