@@ -5,31 +5,29 @@ project(
   default_options: ['warning_level=3', 'c_std=c11'],
 )
 
-sources = []
-headers = []
-subdir('include')
-subdir('src')
-subdir('gperf')
-
 add_global_arguments('-DEVELOPER', language: 'c')
 add_global_arguments('-DINFO', language: 'c')
 
+sources = []
+headers = []
+
 gperf = find_program('gperf', required: true)
-if gperf.found()
-  run_command(
-    [
-      gperf,
-      '-o',
-      '-t',
-      '-I',
-      '-C',
-      '--output-file='
-      + join_paths(meson.current_source_dir(), 'gperf/hash.c'),
-      join_paths(meson.current_source_dir(), 'gperf/instructions.gperf'),
-    ],
-    check: true,
-  )
-endif
+run_command(
+  [
+    gperf,
+    '-o',
+    '-t',
+    '-I',
+    '-C',
+    '--output-file=' + join_paths(meson.current_source_dir(), 'gperf/hash.c'),
+    join_paths(meson.current_source_dir(), 'gperf/instructions.gperf'),
+  ],
+  check: true,
+)
+
+subdir('include')
+subdir('src')
+subdir('gperf')
 
 inc = include_directories('include')
 gperf_inc = include_directories('gperf')
