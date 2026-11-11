@@ -247,17 +247,20 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 			return ASSEMBLER_PARSE_ERROR;
 		}
 
-		// @TODO: check type, a label can be a variable in the data segment or an address for jump
-		// right now it works only with variables
-		uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
-		uint32_t symbol_offset;
-		if (!symtable_lookup(&ctx->table, symbol_name, &symbol_offset)) {
-			return ASSEMBLER_SYM_NOT_FOUND;
+		uint32_t address;
+		if (strpbrk(symbol_name, "0123456789") == 0) {
+			uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
+			uint32_t symbol_offset;
+			if (!symtable_lookup(&ctx->table, symbol_name, &symbol_offset)) {
+				return ASSEMBLER_SYM_NOT_FOUND;
+			}
+			address = data_vaddr + symbol_offset;
+		} else {
+			char *end;
+			address = strtoul(symbol_name, &end, 10);
 		}
 
-		uint32_t symbol_address = data_vaddr + symbol_offset;
-
-		return expand_la_instr(rd, symbol_address, current_pc, line, LINE_BUF_LEN, out_expansion);
+		return expand_la_instr(rd, address, current_pc, line, LINE_BUF_LEN, out_expansion);
 	}
 
 	if (strcmp(instr->name, "mv") == 0) {
@@ -539,7 +542,8 @@ static assembler_error handle_j_type_instr(const instruction *instr, char *rd, u
 	return err;
 }
 
-static assembler_error encode(const instruction *instr, const char *lineBuf, const char *name, int32_t *out_encoded) {
+static assembler_error encode(assembler_ctx *ctx, const instruction *instr, const char *lineBuf, const char *name,
+							  int32_t *out_encoded) {
 	if (!instr || !lineBuf || !name || !out_encoded) {
 		return ASSEMBLER_PARSE_ERROR;
 	}
@@ -629,6 +633,13 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 
 			log_msg(LOG_DEBUG, "B-Type Read: %s, %s, %li", rs1, rs2, imm_long);
 
+			uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
+			uint32_t symbol_offset;
+			if (!symtable_lookup(&ctx->table, instr->name, &symbol_offset)) {
+				return ASSEMBLER_SYM_NOT_FOUND;
+			}
+			imm_long = data_vaddr + symbol_offset;
+
 			err = handle_b_type_instr(instr, rs1, &rs1_val, rs2, &rs2_val, (int32_t)imm_long, &res);
 			if (err != ASSEMBLER_OK) {
 				return err;
@@ -683,10 +694,11 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 	return ASSEMBLER_OK;
 }
 
-static assembler_error encode_pseudo_instr(pseudo_expansion expansion, int32_t *encoded, size_t *counter) {
+static assembler_error encode_pseudo_instr(assembler_ctx *ctx, pseudo_expansion expansion, int32_t *encoded,
+										   size_t *counter) {
 	assembler_error err = ASSEMBLER_OK;
 	for (size_t i = 0; i < expansion.count; i++) {
-		err = encode(expansion.instructions[i], expansion.lines[i], expansion.instructions[i]->name, &encoded[i]);
+		err = encode(ctx, expansion.instructions[i], expansion.lines[i], expansion.instructions[i]->name, &encoded[i]);
 		if (err != ASSEMBLER_OK) {
 			break;
 		}
@@ -926,7 +938,7 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 			return err;
 		}
 
-		err = encode_pseudo_instr(expansion, encoded, &counter);
+		err = encode_pseudo_instr(ctx, expansion, encoded, &counter);
 		if (err != ASSEMBLER_OK) {
 			return err;
 		}
@@ -935,7 +947,7 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 	} else {
 		log_msg(LOG_INFO, "fetching instruction: %s (%c TYPE)", name, instr->type);
 
-		err = encode(instr, line, name, &encoded[0]);
+		err = encode(ctx, instr, line, name, &encoded[0]);
 		if (err != ASSEMBLER_OK) {
 			return err;
 		}
