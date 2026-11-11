@@ -845,8 +845,7 @@ static assembler_error handle_bss_zero(uint8_t *bss, char *args, size_t *current
 	}
 
 	// Write zero into bytes array
-	long long val = 0;
-	memcpy(&bss[*current_size], &val, step);
+	memset(&bss[*current_size], 0, step);
 	*current_size += step;
 
 	return ASSEMBLER_OK;
@@ -1263,18 +1262,17 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 			char args_copy[LINE_BUF_LEN] = {0};
 			snprintf(args_copy, sizeof(args_copy), "%s", args_ptr);
 
+			uint8_t temp_data[DATA_SIZE];
+			size_t capacity = DATA_SIZE;
 			size_t cur_size = 0;
 			assembler_error derr = ASSEMBLER_OK;
+
 			if (strcmp(segment, "data") == 0) {
-				uint8_t temp_data[DATA_SIZE];
-				cur_size = data_offset;
-				size_t capacity = DATA_SIZE;
 				derr = parse_data_directive(temp_data, directive, args_copy, p, &cur_size, capacity);
-			} else {
-				uint8_t temp_data[DATA_SIZE];
-				cur_size = bss_offset;
-				size_t capacity = DATA_SIZE;
+				cur_size = data_offset;
+			} else if (strcmp(segment, "bss") == 0) {
 				derr = parse_bss_directive(temp_data, directive, args_copy, &cur_size, capacity);
+				cur_size = bss_offset;
 			}
 
 			if (derr != ASSEMBLER_OK) {
