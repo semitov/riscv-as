@@ -837,7 +837,12 @@ static assembler_error parse_data_directive(uint8_t *data, const char *directive
 }
 
 static assembler_error handle_bss_zero(uint8_t *bss, char *args, size_t *current_size, size_t capacity) {
-	size_t step = args[0];
+	char *count_token = strtok(args, ",");
+	long long step = 0;
+	if (sscanf(count_token, " %lli", &step) != 1 || step < 0) {
+		log_msg(LOG_ERROR, "Invalid size for .zero directive: %s", count_token);
+		return ASSEMBLER_PARSE_ERROR;
+	}
 
 	if (*current_size + step > capacity) {
 		log_msg(LOG_ERROR, "BSS segment capacity exceeded (%zu bytes max)", capacity);
