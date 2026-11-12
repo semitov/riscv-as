@@ -233,6 +233,42 @@ static assembler_error expand_snez_instr(char *rs2, char *rd, char *line, size_t
 	return pseudo_expansion_add(out_expansion, sltu, line);
 }
 
+static assembler_error expand_ret_instr(char *ra, char *line, size_t len, pseudo_expansion *out_expansion) {
+	// ret is implemented with 'jalr x0, ra, 0'
+	const instruction *jalr = find_instruction("jalr", strlen("jalr"));
+	if (!jalr) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "jalr zero, %s, zero", ra);
+
+	return pseudo_expansion_add(out_expansion, jalr, line);
+}
+
+static assembler_error expand_j_instr(int64_t symbol_addr, int32_t current_pc, char *line, size_t len,
+									  pseudo_expansion *out_expansion) {
+	// j is implemented with 'jal x0, offset'
+	int32_t offset = (int32_t)(symbol_addr - current_pc);
+
+	const instruction *jal = find_instruction("jal", strlen("jal"));
+	if (!jal) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "jal zero, %d", offset);
+
+	return pseudo_expansion_add(out_expansion, jal, line);
+}
+
+static assembler_error expand_jr_instr(char *rs1, char *line, size_t len, pseudo_expansion *out_expansion) {
+	// jr is implemented with 'jalr x0, rs1, 0'
+	const instruction *jalr = find_instruction("jalr", strlen("jalr"));
+	if (!jalr) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "jalr zero, %s, zero", rs1);
+
+	return pseudo_expansion_add(out_expansion, jalr, line);
+}
+
 static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction *instr, const char *lineBuf,
 										   uint32_t current_pc, pseudo_expansion *out_expansion) {
 	if (!instr || !lineBuf || !out_expansion) {
@@ -240,6 +276,7 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 	}
 	pseudo_expansion_reset(out_expansion);
 
+	char ra[REGISTER_LEN] = {0};
 	char rd[REGISTER_LEN] = {0};
 	char rs1[REGISTER_LEN] = {0};
 	char rs2[REGISTER_LEN] = {0};
@@ -302,10 +339,28 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 	}
 
 	if (strcmp(instr->name, "ret") == 0) {
-		// jump is not implemented yet
-		log_msg(LOG_ERROR, "RET requires jalr whis is not implemented yet: %s", instr->name);
+		return expand_ret_instr(ra, line, LINE_BUF_LEN, out_expansion);
+	}
 
-		return ASSEMBLER_JUMP_NOT_IMPLEMENTED;
+	if (strcmp(instr->name, "j") == 0) {
+		char symbol_name[NAME_LEN] = {0};
+		if (sscanf(lineBuf, "%*s %4s", symbol_name) != 1) {
+			log_msg(LOG_ERROR, "Failed to parse j: %s", lineBuf);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+
+		int64_t address = resolve_address(ctx, instr, symbol_name);
+
+		return expand_j_instr(address, current_pc, line, LINE_BUF_LEN, out_expansion);
+	}
+
+	if (strcmp(instr->name, "jr") == 0) {
+		if (sscanf(lineBuf, "%*s %4s", rs1) != 1) {
+			log_msg(LOG_ERROR, "Failed to parse jr: %s", lineBuf);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+
+		return expand_jr_instr(rs1, line, LINE_BUF_LEN, out_expansion);
 	}
 
 	if (strcmp(instr->name, "seqz") == 0) {
