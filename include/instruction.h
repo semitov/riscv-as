@@ -121,6 +121,16 @@ typedef struct assembler_ctx {
 	uint32_t base_vaddr;
 } assembler_ctx;
 
+assembler_error handle_r_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
+										   uint8_t *rs2_val, char *rd, uint8_t *rd_val, int32_t *res);
+assembler_error handle_i_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, int32_t imm, char *rd,
+										   uint8_t *rd_val, int32_t *res);
+assembler_error handle_s_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
+										   uint8_t *rs2_val, int32_t imm, int32_t *res);
+assembler_error handle_b_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
+										   uint8_t *rs2_val, int32_t imm, int32_t *res);
+assembler_error handle_u_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm,
+										   int32_t *res);
 /**
  * @brief Assemble the file.
  *

@@ -139,22 +139,23 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 	fill_section_header(&section_headers[SH_IDX_SHSTRTAB], STR_OFF_SHSTRTAB, SHT_STRTAB, 0, 0, shstrtab_offset,
 						shstrtab_size, 1);
 
-	#ifdef PICO_BUILD
-	if( pico_mount(false) != LFS_ERR_OK){
-	    return ASSEMBLER_ELF_ERROR;
+#ifdef PICO_BUILD
+	if (pico_mount(false) != LFS_ERR_OK) {
+		return ASSEMBLER_ELF_ERROR;
 	}
 	int fp = pico_open(filename, LFS_O_RDWR);
-	if(fp < 0)
-	    return ASSEMBLER_ELF_ERROR;
-	#else
+	if (fp < 0) {
+		return ASSEMBLER_ELF_ERROR;
+	}
+#else
 	FILE *fp = fopen(filename, "wb");
 	if (!fp) {
 		return ASSEMBLER_ELF_ERROR;
 	}
-	#endif
+#endif
 
-	/* Write elf file */
-	#ifdef PICO_BUILD
+/* Write elf file */
+#ifdef PICO_BUILD
 	if (text_len > 0) {
 		if (pico_write(fp, segments[SEGMENT_TEXT].data, text_len) != 1) {
 			pico_close(fp);
@@ -171,7 +172,7 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 
 	pico_close(fp);
 	pico_unmount();
-	#else
+#else
 	if (fwrite(&elf_header, sizeof(Elf32_Ehdr), 1, fp) != 1 ||
 		fwrite(&program_header, sizeof(Elf32_Phdr), 1, fp) != 1) {
 		fclose(fp);
@@ -199,9 +200,7 @@ assembler_error writer32(const char *filename, assembler_ctx *ctx, uint32_t base
 	}
 
 	fclose(fp);
-	#endif
-
-
+#endif
 
 	return ASSEMBLER_OK;
 }

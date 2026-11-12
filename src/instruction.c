@@ -438,8 +438,8 @@ static assembler_error parse_register(const char *reg, uint8_t *out_value) {
 	}
 }
 
-static assembler_error handle_r_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
-										   uint8_t *rs2_val, char *rd, uint8_t *rd_val, int32_t *res) {
+assembler_error handle_r_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2, uint8_t *rs2_val,
+									char *rd, uint8_t *rd_val, int32_t *res) {
 	assembler_error err = parse_register(rs2, rs2_val);
 	if (err != ASSEMBLER_OK) {
 		return err;
@@ -460,8 +460,8 @@ static assembler_error handle_r_type_instr(const instruction *instr, char *rs1, 
 	return err;
 }
 
-static assembler_error handle_i_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, int32_t imm, char *rd,
-										   uint8_t *rd_val, int32_t *res) {
+assembler_error handle_i_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, int32_t imm, char *rd,
+									uint8_t *rd_val, int32_t *res) {
 	assembler_error err = parse_register(rs1, rs1_val);
 	if (err != ASSEMBLER_OK) {
 		return err;
@@ -477,8 +477,8 @@ static assembler_error handle_i_type_instr(const instruction *instr, char *rs1, 
 	return err;
 }
 
-static assembler_error handle_s_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
-										   uint8_t *rs2_val, int32_t imm, int32_t *res) {
+assembler_error handle_s_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2, uint8_t *rs2_val,
+									int32_t imm, int32_t *res) {
 	assembler_error err = parse_register(rs2, rs2_val);
 	if (err != ASSEMBLER_OK) {
 		return err;
@@ -496,8 +496,8 @@ static assembler_error handle_s_type_instr(const instruction *instr, char *rs1, 
 	return err;
 }
 
-static assembler_error handle_b_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2,
-										   uint8_t *rs2_val, int32_t imm, int32_t *res) {
+assembler_error handle_b_type_instr(const instruction *instr, char *rs1, uint8_t *rs1_val, char *rs2, uint8_t *rs2_val,
+									int32_t imm, int32_t *res) {
 	assembler_error err = parse_register(rs1, rs1_val);
 	if (err != ASSEMBLER_OK) {
 		return err;
@@ -514,8 +514,7 @@ static assembler_error handle_b_type_instr(const instruction *instr, char *rs1, 
 	return err;
 }
 
-static assembler_error handle_u_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm,
-										   int32_t *res) {
+assembler_error handle_u_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm, int32_t *res) {
 	assembler_error err = parse_register(rd, rd_val);
 	if (err != ASSEMBLER_OK) {
 		return err;
@@ -526,8 +525,7 @@ static assembler_error handle_u_type_instr(const instruction *instr, char *rd, u
 	return err;
 }
 
-static assembler_error handle_j_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm,
-										   int32_t *res) {
+assembler_error handle_j_type_instr(const instruction *instr, char *rd, uint8_t *rd_val, int32_t imm, int32_t *res) {
 	assembler_error err = parse_register(rd, rd_val);
 	if (err != ASSEMBLER_OK) {
 		return err;
