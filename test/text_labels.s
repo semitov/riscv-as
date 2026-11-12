@@ -1,4 +1,4 @@
 .text
 start: nop
-end:
+end: #comment
     nop

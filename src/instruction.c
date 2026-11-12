@@ -1122,8 +1122,8 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 					p++;
 				}
 
-				// End of the line
-				if (*p == '\0') {
+				// End of the line or comment on the same line
+				if (*p == '\0' || *p == '#') {
 					continue;
 				}
 			}
