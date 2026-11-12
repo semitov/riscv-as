@@ -34,6 +34,24 @@
 #include "littlefs.h"
 #endif
 
+int32_t resolve_address(assembler_ctx *ctx, const instruction *instr, char symbol_name[NAME_LEN]) {
+	int32_t address;
+
+	if (strchr("0123456789", symbol_name[0]) == 0) {
+		uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
+		uint32_t symbol_offset;
+		if (!symtable_lookup(&ctx->table, instr->name, &symbol_offset)) {
+			return ASSEMBLER_SYM_NOT_FOUND;
+		}
+		address = data_vaddr + symbol_offset;
+	} else {
+		char *end;
+		address = strtoul(symbol_name, &end, 10);
+	}
+
+	return address;
+}
+
 typedef struct pseudo_expansion {
 	const instruction *instructions[2];
 	char lines[2][LINE_BUF_LEN];
@@ -215,6 +233,42 @@ static assembler_error expand_snez_instr(char *rs2, char *rd, char *line, size_t
 	return pseudo_expansion_add(out_expansion, sltu, line);
 }
 
+static assembler_error expand_ret_instr(char *ra, char *line, size_t len, pseudo_expansion *out_expansion) {
+	// ret is implemented with 'jalr x0, ra, 0'
+	const instruction *jalr = find_instruction("jalr", strlen("jalr"));
+	if (!jalr) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "jalr zero, %s, zero", ra);
+
+	return pseudo_expansion_add(out_expansion, jalr, line);
+}
+
+static assembler_error expand_j_instr(int64_t symbol_addr, int32_t current_pc, char *line, size_t len,
+									  pseudo_expansion *out_expansion) {
+	// j is implemented with 'jal x0, offset'
+	int32_t offset = (int32_t)(symbol_addr - current_pc);
+
+	const instruction *jal = find_instruction("jal", strlen("jal"));
+	if (!jal) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "jal zero, %d", offset);
+
+	return pseudo_expansion_add(out_expansion, jal, line);
+}
+
+static assembler_error expand_jr_instr(char *rs1, char *line, size_t len, pseudo_expansion *out_expansion) {
+	// jr is implemented with 'jalr x0, rs1, 0'
+	const instruction *jalr = find_instruction("jalr", strlen("jalr"));
+	if (!jalr) {
+		return ASSEMBLER_UNKNOWN_INSTRUCTION;
+	}
+	snprintf(line, len, "jalr zero, %s, zero", rs1);
+
+	return pseudo_expansion_add(out_expansion, jalr, line);
+}
+
 static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction *instr, const char *lineBuf,
 										   uint32_t current_pc, pseudo_expansion *out_expansion) {
 	if (!instr || !lineBuf || !out_expansion) {
@@ -222,6 +276,7 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 	}
 	pseudo_expansion_reset(out_expansion);
 
+	char ra[REGISTER_LEN] = {0};
 	char rd[REGISTER_LEN] = {0};
 	char rs1[REGISTER_LEN] = {0};
 	char rs2[REGISTER_LEN] = {0};
@@ -247,17 +302,9 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 			return ASSEMBLER_PARSE_ERROR;
 		}
 
-		// @TODO: check type, a label can be a variable in the data segment or an address for jump
-		// right now it works only with variables
-		uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
-		uint32_t symbol_offset;
-		if (!symtable_lookup(&ctx->table, symbol_name, &symbol_offset)) {
-			return ASSEMBLER_SYM_NOT_FOUND;
-		}
+		int64_t address = resolve_address(ctx, instr, symbol_name);
 
-		uint32_t symbol_address = data_vaddr + symbol_offset;
-
-		return expand_la_instr(rd, symbol_address, current_pc, line, LINE_BUF_LEN, out_expansion);
+		return expand_la_instr(rd, address, current_pc, line, LINE_BUF_LEN, out_expansion);
 	}
 
 	if (strcmp(instr->name, "mv") == 0) {
@@ -292,10 +339,28 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 	}
 
 	if (strcmp(instr->name, "ret") == 0) {
-		// jump is not implemented yet
-		log_msg(LOG_ERROR, "RET requires jalr whis is not implemented yet: %s", instr->name);
+		return expand_ret_instr(ra, line, LINE_BUF_LEN, out_expansion);
+	}
 
-		return ASSEMBLER_JUMP_NOT_IMPLEMENTED;
+	if (strcmp(instr->name, "j") == 0) {
+		char symbol_name[NAME_LEN] = {0};
+		if (sscanf(lineBuf, "%*s %4s", symbol_name) != 1) {
+			log_msg(LOG_ERROR, "Failed to parse j: %s", lineBuf);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+
+		int64_t address = resolve_address(ctx, instr, symbol_name);
+
+		return expand_j_instr(address, current_pc, line, LINE_BUF_LEN, out_expansion);
+	}
+
+	if (strcmp(instr->name, "jr") == 0) {
+		if (sscanf(lineBuf, "%*s %4s", rs1) != 1) {
+			log_msg(LOG_ERROR, "Failed to parse jr: %s", lineBuf);
+			return ASSEMBLER_PARSE_ERROR;
+		}
+
+		return expand_jr_instr(rs1, line, LINE_BUF_LEN, out_expansion);
 	}
 
 	if (strcmp(instr->name, "seqz") == 0) {
@@ -539,7 +604,8 @@ static assembler_error handle_j_type_instr(const instruction *instr, char *rd, u
 	return err;
 }
 
-static assembler_error encode(const instruction *instr, const char *lineBuf, const char *name, int32_t *out_encoded) {
+static assembler_error encode(assembler_ctx *ctx, const instruction *instr, const char *lineBuf, const char *name,
+							  int32_t *out_encoded) {
 	if (!instr || !lineBuf || !name || !out_encoded) {
 		return ASSEMBLER_PARSE_ERROR;
 	}
@@ -548,6 +614,7 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 	char rs1[REGISTER_LEN] = {0};
 	char rs2[REGISTER_LEN] = {0};
 	long imm_long = 0;
+	char symbol_name[NAME_LEN] = {0};
 	int32_t res = 0;
 	uint8_t rd_val = 0;
 	uint8_t rs1_val = 0;
@@ -620,10 +687,12 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 			}
 			break;
 		case B_TYPE:
-			if (sscanf(lineBuf, "%*s %4[^,], %4[^,], %li", rs1, rs2, &imm_long) != 3) {
+			if (sscanf(lineBuf, "%*s %4[^,], %4[^,], %s", rs1, rs2, symbol_name) != 3) {
 				log_msg(LOG_ERROR, "Failed to parse B-type: %s", lineBuf);
 				return ASSEMBLER_PARSE_ERROR;
 			}
+
+			imm_long = resolve_address(ctx, instr, symbol_name);
 
 			CHECK_IMM_AND_LAST_B(imm_long, INT13_MIN, INT13_MAX, lineBuf, "branch");
 
@@ -650,10 +719,12 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 			}
 			break;
 		case J_TYPE:
-			if (sscanf(lineBuf, "%*s %4[^,], %li", rd, &imm_long) != 2) {
+			if (sscanf(lineBuf, "%*s %4[^,], %s", rd, symbol_name) != 2) {
 				log_msg(LOG_ERROR, "Failed to parse J-type: %s", lineBuf);
 				return ASSEMBLER_PARSE_ERROR;
 			}
+
+			imm_long = resolve_address(ctx, instr, symbol_name);
 
 			CHECK_IMM_AND_LAST_B(imm_long, INT21_MIN, INT21_MAX, lineBuf, "jump");
 
@@ -683,10 +754,11 @@ static assembler_error encode(const instruction *instr, const char *lineBuf, con
 	return ASSEMBLER_OK;
 }
 
-static assembler_error encode_pseudo_instr(pseudo_expansion expansion, int32_t *encoded, size_t *counter) {
+static assembler_error encode_pseudo_instr(assembler_ctx *ctx, pseudo_expansion expansion, int32_t *encoded,
+										   size_t *counter) {
 	assembler_error err = ASSEMBLER_OK;
 	for (size_t i = 0; i < expansion.count; i++) {
-		err = encode(expansion.instructions[i], expansion.lines[i], expansion.instructions[i]->name, &encoded[i]);
+		err = encode(ctx, expansion.instructions[i], expansion.lines[i], expansion.instructions[i]->name, &encoded[i]);
 		if (err != ASSEMBLER_OK) {
 			break;
 		}
@@ -926,7 +998,7 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 			return err;
 		}
 
-		err = encode_pseudo_instr(expansion, encoded, &counter);
+		err = encode_pseudo_instr(ctx, expansion, encoded, &counter);
 		if (err != ASSEMBLER_OK) {
 			return err;
 		}
@@ -935,7 +1007,7 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 	} else {
 		log_msg(LOG_INFO, "fetching instruction: %s (%c TYPE)", name, instr->type);
 
-		err = encode(instr, line, name, &encoded[0]);
+		err = encode(ctx, instr, line, name, &encoded[0]);
 		if (err != ASSEMBLER_OK) {
 			return err;
 		}
