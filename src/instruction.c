@@ -704,7 +704,7 @@ static assembler_error handle_data_integer(uint8_t *data, char *directive, char 
 		step = 1;
 	} else if (strcmp(directive, ".half") == 0) {
 		step = 2;
-	} else {
+	} else if (strcmp(directive, ".word") == 0) {
 		step = 4;
 	}
 
@@ -836,6 +836,62 @@ static assembler_error parse_data_directive(uint8_t *data, const char *directive
 	}
 }
 
+static assembler_error handle_bss_zero(uint8_t *bss, char *args, size_t *current_size, size_t capacity) {
+	char *count_token = strtok(args, ",");
+	long long step = 0;
+	if (sscanf(count_token, " %lli", &step) != 1 || step < 0) {
+		log_msg(LOG_ERROR, "Invalid size for .zero directive: %s", count_token);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	if (*current_size + step > capacity) {
+		log_msg(LOG_ERROR, "BSS segment capacity exceeded (%zu bytes max)", capacity);
+		return ASSEMBLER_ERR;
+	}
+
+	// Write zero into bytes array
+	memset(&bss[*current_size], 0, step);
+	*current_size += step;
+
+	return ASSEMBLER_OK;
+}
+
+static assembler_error handle_bss_space(char *args, size_t *current_size, size_t capacity) {
+	char *count_token = strtok(args, ",");
+	if (!count_token) {
+		log_msg(LOG_ERROR, "%s", "Missing size for .space directive");
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	long long count = 0;
+	if (sscanf(count_token, " %lli", &count) != 1 || count < 0) {
+		log_msg(LOG_ERROR, "Invalid size for .space directive: %s", count_token);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	if ((size_t)count > capacity - *current_size) {
+		log_msg(LOG_ERROR, "BSS segment capacity exceeded (%zu bytes max)", capacity);
+		return ASSEMBLER_ERR;
+	}
+
+	*current_size += count;
+
+	return ASSEMBLER_OK;
+}
+
+static assembler_error parse_bss_directive(uint8_t *data, const char *directive, char *args, size_t *current_size,
+										   size_t capacity) {
+	// Handle data types
+	if (strcmp(directive, ".space") == 0) {
+		return handle_bss_space(args, current_size, capacity);
+	} else if (strcmp(directive, ".zero") == 0) {
+		return handle_bss_zero(data, args, current_size, capacity);
+	} else {
+		log_msg(LOG_ERROR, "Unknown or unsupported bss directive: %s", directive);
+		return ASSEMBLER_UNKNOWN_PSEUDO;
+	}
+}
+
 static assembler_error process_segment_data(assembler_ctx *ctx, char *line, size_t *data_offset) {
 	if (!ctx || !line) {
 		return ASSEMBLER_NULL_ERROR;
@@ -963,17 +1019,61 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 	return err;
 }
 
-static assembler_error process_segment_bss(assembler_ctx *ctx, char *line) {
-	(void)ctx;
-	(void)line;
+static assembler_error process_segment_bss(assembler_ctx *ctx, char *line, size_t *bss_offset) {
+	if (!ctx || !line) {
+		return ASSEMBLER_NULL_ERROR;
+	}
 
-	// @TODO: write function body
+	if (!bss_offset) {
+		return ASSEMBLER_NULL_ERROR;
+	}
 
-	return ASSEMBLER_OK;
+	char *p = line;
+	while (*p && isspace((unsigned char)*p)) {
+		p++;
+	}
+
+	// Get the label if it exists (256 chars)
+	char first_token[LINE_BUF_LEN] = {0};
+	if (sscanf(p, "%255s", first_token) == 1) {
+		size_t len = strlen(first_token);
+		if (len > 0 && first_token[len - 1] == ':') {
+			// Label found
+			p += len;
+			while (*p && isspace((unsigned char)*p)) {
+				p++;
+			}
+		}
+	}
+
+	// Parse the directive
+	char directive[NAME_LEN] = {0};
+	if (sscanf(p, "%63s", directive) != 1) {
+		log_msg(LOG_ERROR, "Failed to parse bss directive: %s", p);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+
+	// Get directive's arguments
+	char *args = p + strcspn(p, " \t");
+	while (*args && isspace((unsigned char)*args)) {
+		args++;
+	}
+
+	size_t current_size = *bss_offset;
+	size_t capacity = ctx->segments[SEGMENT_DATA].capacity;
+	uint8_t *data = ctx->segments[SEGMENT_DATA].data;
+
+	assembler_error err = parse_bss_directive(data, directive, args, &current_size, capacity);
+
+	if (err == ASSEMBLER_OK) {
+		*bss_offset = current_size;
+	}
+
+	return err;
 }
 
 static assembler_error process_assembly_line(assembler_ctx *ctx, char *segment_name, char *line, size_t *text_offset,
-											 size_t *data_offset) {
+											 size_t *data_offset, size_t *bss_offset) {
 	if (!segment_name || segment_name[0] == '\0' || strcmp(segment_name, "text") == 0) {
 		// Process text segment if the segment is not provided
 		return process_segment_text(ctx, line, text_offset);
@@ -984,7 +1084,7 @@ static assembler_error process_assembly_line(assembler_ctx *ctx, char *segment_n
 	}
 
 	if (strcmp(segment_name, "bss") == 0) {
-		return process_segment_bss(ctx, line);
+		return process_segment_bss(ctx, line, bss_offset);
 	}
 
 	log_msg(LOG_ERROR, "Unknown segment name: %s", segment_name);
@@ -1001,6 +1101,7 @@ assembler_error assemble_file(const char *filename, assembler_ctx *ctx) {
 	char segment[LINE_BUF_LEN] = {0};
 	size_t text_offset = 0;
 	size_t data_offset = 0;
+	size_t bss_offset = 0;
 
 	FILE *fp = fopen(filename, "r");
 	if (!fp) {
@@ -1021,7 +1122,7 @@ assembler_error assemble_file(const char *filename, assembler_ctx *ctx) {
 			continue;
 		}
 
-		err = process_assembly_line(ctx, segment, line, &text_offset, &data_offset);
+		err = process_assembly_line(ctx, segment, line, &text_offset, &data_offset, &bss_offset);
 		if (err != ASSEMBLER_OK) {
 			break;
 		}
@@ -1029,6 +1130,7 @@ assembler_error assemble_file(const char *filename, assembler_ctx *ctx) {
 
 	ctx->segments[SEGMENT_TEXT].size = text_offset;
 	ctx->segments[SEGMENT_DATA].size = data_offset;
+	ctx->segments[SEGMENT_BSS].size = bss_offset;
 
 	fclose(fp);
 
@@ -1048,6 +1150,7 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 	// Starts from zero, we don't know how big the segments will be
 	uint32_t data_offset = 0;
 	uint32_t text_offset = 0;
+	uint32_t bss_offset = 0;
 
 	char line[LINE_BUF_LEN];
 	char label[LABEL_LEN];
@@ -1087,6 +1190,8 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 					addr = text_offset;
 				} else if (strcmp(segment, "data") == 0) {
 					addr = data_offset;
+				} else if (strcmp(segment, "bss") == 0) {
+					addr = bss_offset;
 				} else {
 					log_msg(LOG_ERROR, "Unknown segment name while scanning labels: %s", segment);
 					fclose(fp);
@@ -1146,7 +1251,11 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 		} else if (strcmp(segment, "data") == 0 || strcmp(segment, "bss") == 0) {
 			char directive[NAME_LEN] = {0};
 			if (sscanf(p, " %63s", directive) != 1) {
-				log_msg(LOG_ERROR, "Failed to parse data directive: %s", p);
+				if (strcmp(segment, "data") == 0) {
+					log_msg(LOG_ERROR, "Failed to parse data directive: %s", p);
+				} else {
+					log_msg(LOG_ERROR, "Failed to parse bss directive: %s", p);
+				}
 				fclose(fp);
 				return ASSEMBLER_PARSE_ERROR;
 			}
@@ -1159,17 +1268,28 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 			snprintf(args_copy, sizeof(args_copy), "%s", args_ptr);
 
 			uint8_t temp_data[DATA_SIZE];
-			size_t cur_size = data_offset;
 			size_t capacity = DATA_SIZE;
+			size_t cur_size = 0;
+			assembler_error derr = ASSEMBLER_OK;
 
-			assembler_error derr = parse_data_directive(temp_data, directive, args_copy, p, &cur_size, capacity);
+			if (strcmp(segment, "data") == 0) {
+				derr = parse_data_directive(temp_data, directive, args_copy, p, &cur_size, capacity);
+				cur_size = data_offset;
+			} else if (strcmp(segment, "bss") == 0) {
+				derr = parse_bss_directive(temp_data, directive, args_copy, &cur_size, capacity);
+				cur_size = bss_offset;
+			}
 
 			if (derr != ASSEMBLER_OK) {
 				fclose(fp);
 				return derr;
 			}
 
-			data_offset = (uint32_t)cur_size;
+			if (strcmp(segment, "data") == 0) {
+				data_offset = (uint32_t)cur_size;
+			} else {
+				bss_offset = (uint32_t)cur_size;
+			}
 		} else {
 			log_msg(LOG_ERROR, "Unknown segment name while scanning: %s", segment);
 			fclose(fp);
@@ -1179,6 +1299,7 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 
 	ctx->segments[SEGMENT_TEXT].size = text_offset;
 	ctx->segments[SEGMENT_DATA].size = data_offset;
+	ctx->segments[SEGMENT_BSS].size = bss_offset;
 
 	fclose(fp);
 
