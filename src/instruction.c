@@ -898,6 +898,20 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 		return ASSEMBLER_NULL_ERROR;
 	}
 
+	char first_token[LINE_BUF_LEN] = {0};
+	if (sscanf(line, "%255s", first_token) == 1) {
+		size_t len = strlen(first_token);
+		if (len > 0 && first_token[len - 1] == ':') {
+		line += len;
+		while (*line && isspace((unsigned char)*line)) {
+			line++;
+		}
+		if (*line == '\0' || *line == '#') return err; // Returns if the label is on its own line or followed by a comment
+ 		
+		// Line points to an instruction on the same line
+		}
+	}
+
 	size_t counter = *text_offset;
 	int32_t encoded[2] = {0};
 
@@ -1108,8 +1122,8 @@ assembler_error scan_labels(const char *filename, assembler_ctx *ctx) {
 					p++;
 				}
 
-				// End of the line
-				if (*p == '\0') {
+				// End of the line or comment on the same line
+				if (*p == '\0' || *p == '#') {
 					continue;
 				}
 			}
