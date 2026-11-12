@@ -34,6 +34,24 @@
 #include "littlefs.h"
 #endif
 
+int32_t resolve_address(assembler_ctx *ctx, const instruction *instr, char symbol_name[NAME_LEN]) {
+	int32_t address;
+
+	if (strchr("0123456789", symbol_name[0]) == 0) {
+		uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
+		uint32_t symbol_offset;
+		if (!symtable_lookup(&ctx->table, instr->name, &symbol_offset)) {
+			return ASSEMBLER_SYM_NOT_FOUND;
+		}
+		address = data_vaddr + symbol_offset;
+	} else {
+		char *end;
+		address = strtoul(symbol_name, &end, 10);
+	}
+
+	return address;
+}
+
 typedef struct pseudo_expansion {
 	const instruction *instructions[2];
 	char lines[2][LINE_BUF_LEN];
@@ -247,18 +265,7 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 			return ASSEMBLER_PARSE_ERROR;
 		}
 
-		uint32_t address;
-		if (strpbrk(symbol_name, "0123456789") == 0) {
-			uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
-			uint32_t symbol_offset;
-			if (!symtable_lookup(&ctx->table, symbol_name, &symbol_offset)) {
-				return ASSEMBLER_SYM_NOT_FOUND;
-			}
-			address = data_vaddr + symbol_offset;
-		} else {
-			char *end;
-			address = strtoul(symbol_name, &end, 10);
-		}
+		int64_t address = resolve_address(ctx, instr, symbol_name);
 
 		return expand_la_instr(rd, address, current_pc, line, LINE_BUF_LEN, out_expansion);
 	}
@@ -552,6 +559,7 @@ static assembler_error encode(assembler_ctx *ctx, const instruction *instr, cons
 	char rs1[REGISTER_LEN] = {0};
 	char rs2[REGISTER_LEN] = {0};
 	long imm_long = 0;
+	char symbol_name[NAME_LEN] = {0};
 	int32_t res = 0;
 	uint8_t rd_val = 0;
 	uint8_t rs1_val = 0;
@@ -624,21 +632,16 @@ static assembler_error encode(assembler_ctx *ctx, const instruction *instr, cons
 			}
 			break;
 		case B_TYPE:
-			if (sscanf(lineBuf, "%*s %4[^,], %4[^,], %li", rs1, rs2, &imm_long) != 3) {
+			if (sscanf(lineBuf, "%*s %4[^,], %4[^,], %s", rs1, rs2, symbol_name) != 3) {
 				log_msg(LOG_ERROR, "Failed to parse B-type: %s", lineBuf);
 				return ASSEMBLER_PARSE_ERROR;
 			}
 
+			imm_long = resolve_address(ctx, instr, symbol_name);
+
 			CHECK_IMM_AND_LAST_B(imm_long, INT13_MIN, INT13_MAX, lineBuf, "branch");
 
 			log_msg(LOG_DEBUG, "B-Type Read: %s, %s, %li", rs1, rs2, imm_long);
-
-			uint32_t data_vaddr = get_data_vaddr(ctx, ctx->base_vaddr);
-			uint32_t symbol_offset;
-			if (!symtable_lookup(&ctx->table, instr->name, &symbol_offset)) {
-				return ASSEMBLER_SYM_NOT_FOUND;
-			}
-			imm_long = data_vaddr + symbol_offset;
 
 			err = handle_b_type_instr(instr, rs1, &rs1_val, rs2, &rs2_val, (int32_t)imm_long, &res);
 			if (err != ASSEMBLER_OK) {
@@ -661,10 +664,12 @@ static assembler_error encode(assembler_ctx *ctx, const instruction *instr, cons
 			}
 			break;
 		case J_TYPE:
-			if (sscanf(lineBuf, "%*s %4[^,], %li", rd, &imm_long) != 2) {
+			if (sscanf(lineBuf, "%*s %4[^,], %s", rd, symbol_name) != 2) {
 				log_msg(LOG_ERROR, "Failed to parse J-type: %s", lineBuf);
 				return ASSEMBLER_PARSE_ERROR;
 			}
+
+			imm_long = resolve_address(ctx, instr, symbol_name);
 
 			CHECK_IMM_AND_LAST_B(imm_long, INT21_MIN, INT21_MAX, lineBuf, "jump");
 
