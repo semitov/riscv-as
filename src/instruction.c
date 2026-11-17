@@ -836,56 +836,43 @@ static assembler_error parse_data_directive(uint8_t *data, const char *directive
 	}
 }
 
-static assembler_error handle_bss_zero(uint8_t *bss, char *args, size_t *current_size, size_t capacity) {
+static assembler_error handle_bss_allocation(uint8_t *bss, char *args, size_t *current_size, size_t capacity,
+											 bool is_zero) {
 	char *count_token = strtok(args, ",");
-	long long step = 0;
-	if (sscanf(count_token, " %lli", &step) != 1 || step < 0) {
-		log_msg(LOG_ERROR, "Invalid size for .zero directive: %s", count_token);
+	if (!count_token) {
+		log_msg(LOG_ERROR, "%s", is_zero ? "Missing size for .zero directive" : "Missing size for .space directive");
 		return ASSEMBLER_PARSE_ERROR;
 	}
-
-	if (*current_size + step > capacity) {
+	size_t reserve = 0;
+	if (count_token[0] == '-') {
+		log_msg(LOG_ERROR, "Invalid negative number reserved: %s", count_token);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+	if (sscanf(count_token, " %lu", &reserve) != 1 || reserve == 0) {
+		log_msg(LOG_ERROR, (is_zero ? "Invalid size for .zero directive: %s" : "Invalid size for .space directive: %s"),
+				count_token);
+		return ASSEMBLER_PARSE_ERROR;
+	}
+	if (*current_size + reserve > capacity) {
 		log_msg(LOG_ERROR, "BSS segment capacity exceeded (%zu bytes max)", capacity);
 		return ASSEMBLER_ERR;
 	}
 
 	// Write zero into bytes array
-	memset(&bss[*current_size], 0, step);
-	*current_size += step;
+	if (is_zero && bss != NULL) {
+		memset(&bss[*current_size], 0, reserve);
+	}
+	*current_size += reserve;
 
 	return ASSEMBLER_OK;
 }
-
-static assembler_error handle_bss_space(char *args, size_t *current_size, size_t capacity) {
-	char *count_token = strtok(args, ",");
-	if (!count_token) {
-		log_msg(LOG_ERROR, "%s", "Missing size for .space directive");
-		return ASSEMBLER_PARSE_ERROR;
-	}
-
-	long long count = 0;
-	if (sscanf(count_token, " %lli", &count) != 1 || count < 0) {
-		log_msg(LOG_ERROR, "Invalid size for .space directive: %s", count_token);
-		return ASSEMBLER_PARSE_ERROR;
-	}
-
-	if ((size_t)count > capacity - *current_size) {
-		log_msg(LOG_ERROR, "BSS segment capacity exceeded (%zu bytes max)", capacity);
-		return ASSEMBLER_ERR;
-	}
-
-	*current_size += count;
-
-	return ASSEMBLER_OK;
-}
-
 static assembler_error parse_bss_directive(uint8_t *data, const char *directive, char *args, size_t *current_size,
 										   size_t capacity) {
 	// Handle data types
 	if (strcmp(directive, ".space") == 0) {
-		return handle_bss_space(args, current_size, capacity);
+		return handle_bss_allocation(NULL, args, current_size, capacity, false);
 	} else if (strcmp(directive, ".zero") == 0) {
-		return handle_bss_zero(data, args, current_size, capacity);
+		return handle_bss_allocation(data, args, current_size, capacity, true);
 	} else {
 		log_msg(LOG_ERROR, "Unknown or unsupported bss directive: %s", directive);
 		return ASSEMBLER_UNKNOWN_PSEUDO;
