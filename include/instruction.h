@@ -69,30 +69,30 @@
 
 #define ASSEMBLE_R_TYPE(instr, rs2, rs1, rd)                                                                           \
 	(int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)rs2 << 20) | ((uint32_t)rs1 << 15) |                        \
-			  ((uint32_t)instr->funct3 << 12) | ((uint32_t)rd << 7) | instr->opcode);
+			  ((uint32_t)instr->funct3 << 12) | ((uint32_t)rd << 7) | instr->opcode)
 
 #define ASSEMBLE_I_TYPE(instr, rs1, imm, rd)                                                                           \
 	(int32_t)((((uint32_t)imm & 0xFFFu) << 20) | ((uint32_t)rs1 << 15) | ((uint32_t)instr->funct3 << 12) |             \
-			  ((uint32_t)rd << 7) | instr->opcode);
+			  ((uint32_t)rd << 7) | instr->opcode)
 
 #define ASSEMBLE_S_TYPE(instr, rs1, rs2, imm)                                                                          \
 	(int32_t)((((imm >> 5) & 0x7Fu) << 25) | ((uint32_t)rs2 << 20) | ((uint32_t)rs1 << 15) |                           \
-			  ((uint32_t)instr->funct3 << 12) | ((imm & 0x1Fu) << 7) | instr->opcode);
+			  ((uint32_t)instr->funct3 << 12) | ((imm & 0x1Fu) << 7) | instr->opcode)
 
 #define ASSEMBLE_B_TYPE(instr, rs1, rs2, imm)                                                                          \
 	(int32_t)((((imm >> 12) & 0x1u) << 31) | (((imm >> 5) & 0x3Fu) << 25) | ((uint32_t)rs2 << 20) |                    \
 			  ((uint32_t)rs1 << 15) | ((uint32_t)instr->funct3 << 12) | (((imm >> 1) & 0xFu) << 8) |                   \
-			  (((imm >> 11) & 0x1u) << 7) | instr->opcode);
+			  (((imm >> 11) & 0x1u) << 7) | instr->opcode)
 
 #define ASSEMBLE_U_TYPE(instr, rd, imm)                                                                                \
-	(int32_t)((((uint32_t)imm & 0xFFFFFu) << 12) | ((uint32_t)rd << 7) | instr->opcode);
+	(int32_t)((((uint32_t)imm & 0xFFFFFu) << 12) | ((uint32_t)rd << 7) | instr->opcode)
 
 #define ASSEMBLE_J_TYPE(instr, rd, imm)                                                                                \
 	(int32_t)((((imm >> 20) & 0x1u) << 31) | (((imm >> 1) & 0x3FFu) << 21) | (((imm >> 11) & 0x1u) << 20) |            \
-			  (((imm >> 12) & 0xFFu) << 12) | ((uint32_t)rd << 7) | instr->opcode);
+			  (((imm >> 12) & 0xFFu) << 12) | ((uint32_t)rd << 7) | instr->opcode)
 
 #define ASSEMBLE_Z_TYPE(instr)                                                                                         \
-	(int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)instr->funct3 << 12) | instr->opcode);
+	(int32_t)(((uint32_t)instr->funct7 << 25) | ((uint32_t)instr->funct3 << 12) | instr->opcode)
 
 typedef enum segment_type {
 	SEGMENT_DATA = 0,
