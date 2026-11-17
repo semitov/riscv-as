@@ -1,0 +1,4 @@
+.text
+start: # comment
+    nop
+  
