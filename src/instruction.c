@@ -902,13 +902,15 @@ static assembler_error process_segment_text(assembler_ctx *ctx, char *line, size
 	if (sscanf(line, "%255s", first_token) == 1) {
 		size_t len = strlen(first_token);
 		if (len > 0 && first_token[len - 1] == ':') {
-		line += len;
-		while (*line && isspace((unsigned char)*line)) {
-			line++;
-		}
-		if (*line == '\0' || *line == '#') return err; // Returns if the label is on its own line or followed by a comment
- 		
-		// Line points to an instruction on the same line
+			line += len;
+			while (*line && isspace((unsigned char)*line)) {
+				line++;
+			}
+			if (*line == '\0' || *line == '#') {
+				return err; // Returns if the label is on its own line or followed by a comment
+			}
+
+			// Line points to an instruction on the same line
 		}
 	}
 
