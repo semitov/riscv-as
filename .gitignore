@@ -2,6 +2,7 @@
 build/
 gperf/hash.c
 test/*.out
+.idea/
 # Prerequisites
 *.d
 

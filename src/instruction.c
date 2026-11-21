@@ -537,7 +537,7 @@ assembler_error handle_j_type_instr(const instruction *instr, char *rd, uint8_t 
 	return err;
 }
 
-static assembler_error encode(const instruction *instr, const char *lineBuf, const char *name, int32_t *out_encoded) {
+assembler_error encode(const instruction *instr, const char *lineBuf, const char *name, int32_t *out_encoded) {
 	if (!instr || !lineBuf || !name || !out_encoded) {
 		return ASSEMBLER_PARSE_ERROR;
 	}
