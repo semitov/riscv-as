@@ -536,9 +536,14 @@ static assembler_error handle_i_type_instr(const instruction *instr, char *rs1, 
 	if (err != ASSEMBLER_OK) {
 		return err;
 	}
-
 	*res = ASSEMBLE_I_TYPE(instr, *rs1_val, imm, *rd_val);
-
+	if(instr->funct7 != 0){
+	    if (imm < 0 || imm > 31) {
+            log_msg(LOG_ERROR, "Shift amount out of range %d", imm);
+            return ASSEMBLER_INVALID_IMMEDIATE;
+		}
+	    *res =  (*res & 0x1ffffff) | (instr->funct7 << 25);
+	}
 	return err;
 }
 
