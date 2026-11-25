@@ -297,7 +297,7 @@ static assembler_error expand_pseudo_instr(assembler_ctx *ctx, const instruction
 	if (strcmp(instr->name, "la") == 0) {
 		char symbol_name[NAME_LEN] = {0};
 
-		if (sscanf(lineBuf, "%*s %4[^,], %s", rd, symbol_name) != 2) {
+		if (sscanf(lineBuf, "%*s %4[^,], %63s", rd, symbol_name) != 2) {
 			log_msg(LOG_ERROR, "Failed to parse la: %s", lineBuf);
 			return ASSEMBLER_PARSE_ERROR;
 		}
@@ -719,7 +719,7 @@ static assembler_error encode(assembler_ctx *ctx, const instruction *instr, cons
 			}
 			break;
 		case J_TYPE:
-			if (sscanf(lineBuf, "%*s %4[^,], %s", rd, symbol_name) != 2) {
+			if (sscanf(lineBuf, "%*s %4[^,], %63s", rd, symbol_name) != 2) {
 				log_msg(LOG_ERROR, "Failed to parse J-type: %s", lineBuf);
 				return ASSEMBLER_PARSE_ERROR;
 			}
